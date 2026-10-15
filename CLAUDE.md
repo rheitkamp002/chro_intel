@@ -107,6 +107,18 @@ These changed the spec; keep them unless the owner says otherwise.
 - **v1 extra data: career/tenure and company context only.** 10-K human-capital disclosures
   and company/influence signals are deferred.
 
+## Known constraints
+
+- **Streamlit Cloud keeps imported modules cached across a redeploy**, so a new `app.py`
+  can call a function an OLD `metrics.py` lacks (MEASURED 2026-10-15: AttributeError on
+  `metrics.recipient_profile`). `app.py` therefore reloads `config`, `programs`, `metrics`,
+  `review` and `brief` every run. Never reload `db` (it holds the connection pool). After
+  adding a new helper module, add it to that reload list. If the hosted app still shows a
+  stale error: share.streamlit.io → My apps → ⋮ → Reboot.
+- **Approval must never leave two current roles for one person** (`ux_role_one_current`).
+  `review.resolve_current` sets same-company duplicates aside and demotes the losing
+  current role across employers; keep its tests passing.
+
 ## Data rules
 
 - **Never rewrite history.** Title/company AT recognition live on `recognition_event` and are
