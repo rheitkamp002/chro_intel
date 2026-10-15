@@ -18,9 +18,19 @@ from datetime import date as _date
 import pandas as pd
 import streamlit as st
 
+import importlib
+
 import config
 import metrics
+import programs as _programs_mod
 from db import connect, fetch_all
+
+# Streamlit re-executes app.py on every run but keeps imported modules cached, so after a
+# redeploy the new app.py could call a function the OLD metrics.py lacks. MEASURED
+# 2026-10-15 on Streamlit Cloud: AttributeError on metrics.recipient_profile. Reload the
+# pure-logic modules each run (milliseconds). Never db -- reloading it would drop the pool.
+for _m in (config, _programs_mod, metrics):
+    importlib.reload(_m)
 
 st.set_page_config(page_title="CHRO External Recognition", layout="wide")
 
@@ -546,6 +556,7 @@ def _role_result_msg(res: dict, rejected: int) -> str:
 
 with _T["review"]:
     import review
+    importlib.reload(review)                  # see the reload note at the top of the file
     if st.session_state.get("rv_msg"):
         st.success(st.session_state.pop("rv_msg"))
     st.caption("Research drafts wait here until approved. Only approved rows appear "
@@ -995,6 +1006,7 @@ def profile_lines(p: dict) -> list[tuple[str, str, str]]:
 with _T["criteria"]:
     import brief
     import programs as programs_src
+    importlib.reload(brief)                   # see the reload note at the top of the file
     ORDERED = sorted(PROGRAMS, key=lambda p: (-float(p["analyst_weight"]),
                                               p["recognition_tier"], p["badge_label"]))
     RECENT = recent_recipients(EVENTS)
