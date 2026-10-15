@@ -243,6 +243,13 @@ create table if not exists accomplishment_theme (
   primary key (accomplishment_id, theme)
 );
 
+-- Research done, nothing specific found: a stated absence, distinct from "not researched".
+create table if not exists accomplishment_gap (
+  event_id     uuid primary key references recognition_event(event_id) on delete cascade,
+  note         text not null,                 -- what was searched and why nothing qualified
+  searched_at  date not null default current_date
+);
+
 -- Last time each run.py step ran (distinct from how fresh the newest row is).
 create table if not exists ingest_run (
   step     text primary key,

@@ -146,6 +146,36 @@ def test_workbook_plan_matches_known_overlaps():
                for k in {(r["organization"], r["recognition"]) for r in rows})
 
 
+# ----- accomplishment validation -----
+import accomplishments  # noqa: E402
+
+_EVS = {"e1": {"program_key": "HRO_COY"}}
+_CRIT = {"HRO_COY": {"scope_impact": "c1"}}
+
+
+def _item(**kw):
+    base = {"event_id": "e1", "headline": "Did a thing", "what_they_did": "Details.",
+            "source_url": "https://x", "evidence_quality": "award_body_writeup",
+            "criteria": [{"criterion_key": "scope_impact"}], "themes": ["Culture"]}
+    return {**base, **kw}
+
+
+def test_validate_accepts_good_item():
+    assert accomplishments.validate(_item(), _EVS, _CRIT) == []
+
+
+def test_validate_rejects_off_vocabulary_and_foreign_criteria():
+    p = accomplishments.validate(
+        _item(themes=["Vibes"], evidence_quality="rumor",
+              criteria=[{"criterion_key": "org_impact"}]), _EVS, _CRIT)
+    assert len(p) == 3, p
+
+
+def test_validate_rejects_unknown_event_and_missing_source():
+    assert accomplishments.validate(_item(event_id="zz"), _EVS, _CRIT)
+    assert accomplishments.validate(_item(source_url=""), _EVS, _CRIT)
+
+
 # ----- programs.py integrity -----
 def test_programs_have_identical_keys():
     keys = set(programs.PROGRAMS[0])

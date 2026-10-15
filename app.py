@@ -162,6 +162,24 @@ def load_accomplishments() -> dict[str, list[dict]]:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def load_research_state() -> tuple[dict[str, list[dict]], dict[str, int]]:
+    """Per executive: recorded research gaps, and how many accomplishment drafts await review."""
+    with connect() as conn:
+        gaps = fetch_all(conn, """
+            select e.executive_id::text as executive_id, p.badge_label, e.recognition_year,
+                   g.note, g.searched_at
+            from accomplishment_gap g join recognition_event e using (event_id)
+            join recognition_program p using (program_id)""")
+        drafts = fetch_all(conn, """select executive_id::text as executive_id, count(*) as n
+                                    from accomplishment where review_status = 'draft'
+                                    group by executive_id""")
+    out: dict[str, list[dict]] = defaultdict(list)
+    for g in gaps:
+        out[g["executive_id"]].append(g)
+    return out, {d["executive_id"]: d["n"] for d in drafts}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def load_peer_sets() -> tuple[list[dict], list[dict]]:
     with connect() as conn:
         sets = fetch_all(conn, "select * from peer_set order by peer_set_key desc")
@@ -277,6 +295,7 @@ except Exception as exc:                     # a paused/unreachable database is 
     st.stop()
 
 SETS, MEMBERS = load_peer_sets()
+GAPS, ACC_DRAFTS = load_research_state()
 _SET_LABEL = {s["peer_set_key"]: s["label"] for s in SETS}
 PEER_LABELS = [s["label"] for s in SETS]
 PEERS_BY_COMPANY: dict[str, set[str]] = defaultdict(set)
@@ -409,14 +428,38 @@ with _T["peers"]:
     if not SETS:
         st.write("No peer sets loaded yet — run `run.py roster`.")
     else:
-        key_by_label = {s["label"]: s["peer_set_key"] for s in SETS}
+        ALL_KEY = "__all__"
+        key_by_label = {"All HR leaders tracked": ALL_KEY}
+        key_by_label.update({s["label"]: s["peer_set_key"] for s in SETS})
         ps = key_by_label[st.selectbox("Peer set", list(key_by_label), key="peer_set")]
-        meta = next(s for s in SETS if s["peer_set_key"] == ps)
-        st.caption(meta["description"] or "")
         by_company = {r["company_id"]: r for r in ALL_ROWS if r["company_id"]}
         roles_by_company = {r["company_id"]: r for rs in ROLES.values() for r in rs
                             if r["is_current"]}
+        current_role = {xid: next((r for r in rs if r["is_current"]), None)
+                        for xid, rs in ROLES.items()}
         out = []
+        if ps == ALL_KEY:
+            meta = {"is_complete": False}
+            st.caption("Every HR leader in the app — award recipients and verified peer-set "
+                       "CHROs — whatever their recognition. Sorted by name.")
+            for row in sorted((r for r in ALL_ROWS if r["executive_type"] == "practitioner"),
+                              key=lambda r: r["Executive"].lower()):
+                role = current_role.get(row["executive_id"])
+                sets = ", ".join(sorted(PEERS_BY_COMPANY.get(row["company_id"], set())))
+                out.append({
+                    "Rank": None, "Company": row["Company"], "Industry": row["Industry"],
+                    "CHRO": row["Executive"], "Title": row["Title"],
+                    "Tenure": _tenure(role["start_date"]) if role else "—",
+                    "Hire": (role["hire_type"] or "—") if role else "—",
+                    "Strength": row["Strength"], "Breadth": row["Breadth"],
+                    "Latest": row["Latest"],
+                    "Note": (f"In: {sets}. " if sets else "")
+                            + ("Role verified." if row["Role verified"]
+                               else "Role as stated at recognition (not yet verified)."),
+                })
+        else:
+            meta = next(s for s in SETS if s["peer_set_key"] == ps)
+            st.caption(meta["description"] or "")
         for m in [m for m in MEMBERS if m["peer_set_key"] == ps]:
             row = by_company.get(m["company_id"])
             role = roles_by_company.get(m["company_id"])
@@ -446,10 +489,10 @@ with _T["peers"]:
         verified = sum(1 for o in out if o["CHRO"] != "—")
         recognized = sum(1 for o in out if (o["Strength"] or 0) > 0)
         k = st.columns(3)
-        k[0].metric("Companies", len(out))
+        k[0].metric("Leaders" if ps == ALL_KEY else "Companies", len(out))
         k[1].metric("CHRO verified", f"{verified} / {len(out)}")
         k[2].metric("With core recognition", recognized)
-        if not meta["is_complete"]:
+        if not meta["is_complete"] and ps != ALL_KEY:
             st.caption("This peer set is not yet complete, so recognition rates and "
                        "percentiles are withheld — they would be biased by who has been "
                        "verified so far.")
@@ -481,6 +524,50 @@ with _T["review"]:
                     st.cache_data.clear()
                     st.rerun()
         st.subheader("Draft roles")
+
+    acc_drafts = review.draft_accomplishments()
+    if acc_drafts:
+        st.subheader("Draft accomplishments — what they did")
+        st.caption("Drafted by research agents from the cited source. Check that the source "
+                   "supports the claim (the quote is there to make that quick), then decide.")
+        adf = pd.DataFrame([{
+            "Decision": "", "Executive": a["canonical_name"],
+            "Recognition": f"{a['badge_label'] or '—'} {a['recognition_year'] or ''}".strip(),
+            "Headline": a["headline"], "What they did": a["what_they_did"],
+            "Stated outcomes": a["quantified_outcomes"] or "",
+            "Criteria met": a["criteria"], "Themes": a["themes"],
+            "Evidence": (a["evidence_quality"] or "").replace("_", " "),
+            "Quote": a["source_quote"] or "", "Source": a["source_url"],
+            "accomplishment_id": a["accomplishment_id"],
+        } for a in acc_drafts])
+        aed = st.data_editor(
+            adf, key="acc_editor", hide_index=True, width="stretch", height=480,
+            disabled=[c for c in adf.columns if c != "Decision"],
+            column_order=[c for c in adf.columns if c != "accomplishment_id"],
+            column_config={
+                "Decision": st.column_config.SelectboxColumn(
+                    options=["", "Approve", "Reject"], width="small"),
+                "Source": st.column_config.LinkColumn(display_text="open"),
+            })
+        a1, a2 = st.columns(2)
+        if a1.button("Apply accomplishment decisions", key="acc_apply", type="primary"):
+            ok = review.set_accomplishment_status(
+                list(aed.loc[aed["Decision"] == "Approve", "accomplishment_id"]), "approved")
+            no = review.set_accomplishment_status(
+                list(aed.loc[aed["Decision"] == "Reject", "accomplishment_id"]), "rejected")
+            st.cache_data.clear()
+            st.success(f"{ok} approved, {no} rejected.")
+            st.rerun()
+        body = [a["accomplishment_id"] for a in acc_drafts
+                if a["evidence_quality"] == "award_body_writeup"]
+        if a2.button(f"Approve all {len(body)} sourced to the award body's own write-up",
+                     key="acc_body", disabled=not body):
+            n = review.set_accomplishment_status(body, "approved")
+            st.cache_data.clear()
+            st.success(f"{n} approved.")
+            st.rerun()
+        st.subheader("Draft roles")
+
     drafts = review.draft_roles()
     if not drafts:
         st.write("Nothing awaiting review.")
@@ -572,9 +659,17 @@ with _T["profile"]:
     with left:
         st.subheader("What they did")
         accs = ACCOMPLISHMENTS.get(xid, [])
+        gaps, pending_n = GAPS.get(xid, []), ACC_DRAFTS.get(xid, 0)
         if not accs:
-            st.write("Not yet researched — no reviewed accomplishment write-up exists for "
-                     "this leader yet.")
+            if pending_n:
+                st.write(f"Research drafted — {pending_n} accomplishment(s) awaiting review "
+                         "in the Review tab.")
+            elif not gaps:
+                st.write("Not yet researched.")
+        for g in gaps:
+            st.markdown(f"<span class='muted'>{g['badge_label']} {g['recognition_year']}: "
+                        f"researched {g['searched_at']}, no specific accomplishment found in "
+                        f"public sources. {g['note']}</span>", unsafe_allow_html=True)
         for a in accs:
             with st.container(border=True):
                 st.markdown(f"**{a['headline']}**")

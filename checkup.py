@@ -12,7 +12,8 @@ from db import connect, fetch_all
 
 TABLES = ("company", "peer_set", "company_peer_set", "executive", "executive_role", "recognition_program", "program_category",
           "program_criterion", "recognition_cycle", "recognition_event", "accomplishment",
-          "accomplishment_criterion", "accomplishment_theme", "ingest_run")
+          "accomplishment_criterion", "accomplishment_theme", "accomplishment_gap",
+          "ingest_run")
 
 
 def run() -> None:
