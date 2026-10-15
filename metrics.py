@@ -172,9 +172,13 @@ def career_summary(roles: list[dict], today=None) -> dict:
     from datetime import date as _d
     today = today or _d.today()
     chro = [r for r in roles if r.get("role_level") == "CHRO"]
-    spans = sorted((r["start_date"], r["end_date"] or (today if r.get("is_current") else None))
-                   for r in chro if r.get("start_date"))
-    spans = [(s, e) for s, e in spans if e]
+    # Drop open-ended spans BEFORE sorting: two roles with the same start where one has no
+    # end would compare a date with None and raise. MEASURED 2026-10-15 in production.
+    spans = sorted(
+        (s, e) for s, e in (
+            (r["start_date"], r["end_date"] or (today if r.get("is_current") else None))
+            for r in chro if r.get("start_date"))
+        if e)
     merged: list[list] = []
     for s, e in spans:
         if merged and s <= merged[-1][1]:

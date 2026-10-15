@@ -230,6 +230,20 @@ def test_career_summary_merges_overlaps_and_flags_non_hr():
     assert s["employers"] == 2
 
 
+def test_career_summary_same_start_one_without_end_does_not_crash():
+    # The production crash of 2026-10-15: equal starts, one end missing and not current.
+    roles = [
+        {"role_level": "CHRO", "start_date": _D(2020, 1, 1), "end_date": None,
+         "is_current": False},
+        {"role_level": "CHRO", "start_date": _D(2020, 1, 1), "end_date": _D(2022, 1, 1),
+         "is_current": False},
+        {"role_level": "CHRO", "start_date": _D(2020, 1, 1), "end_date": None,
+         "is_current": True},
+    ]
+    s = metrics.career_summary(roles, today=_D(2024, 1, 1))
+    assert s["years_as_chro"] == 4.0, s
+
+
 def test_career_summary_unknown_is_none_not_zero():
     s = metrics.career_summary([{"role_level": "CHRO", "is_current": True, "start_date": None,
                                  "end_date": None}])
