@@ -530,8 +530,24 @@ with _T["peers"]:
 
 
 # ----- Review
+def _role_result_msg(res: dict, rejected: int) -> str:
+    """Plain-language result of a role approval (shown after the page reloads)."""
+    parts = [f"{res['changed']} approved"]
+    if rejected:
+        parts.append(f"{rejected} rejected")
+    if res["duplicates"]:
+        parts.append(f"{res['duplicates']} set aside as duplicates of a current role at the "
+                     "same company")
+    if res["demoted"]:
+        parts.append(f"{res['demoted']} earlier current role(s) moved to prior, so each "
+                     "person has one current job")
+    return "Done: " + "; ".join(parts) + "."
+
+
 with _T["review"]:
     import review
+    if st.session_state.get("rv_msg"):
+        st.success(st.session_state.pop("rv_msg"))
     st.caption("Research drafts wait here until approved. Only approved rows appear "
                "elsewhere in the app. Check the source link before approving.")
     dupes = review.possible_duplicates()
@@ -668,14 +684,14 @@ with _T["review"]:
             no = review.set_status(
                 list(edited.loc[edited["Decision"] == "Reject", "role_id"]), "rejected")
             st.cache_data.clear()
-            st.success(f"{ok} approved, {no} rejected.")
+            st.session_state["rv_msg"] = _role_result_msg(ok, no["changed"])
             st.rerun()
         high = [d["role_id"] for d in shown if d["confidence"] == "high"]
         if b2.button(f"Approve all {len(high)} high-confidence drafts shown", key="rv_high",
                      disabled=not high):
             n = review.set_status(high, "approved")
             st.cache_data.clear()
-            st.success(f"{n} approved.")
+            st.session_state["rv_msg"] = _role_result_msg(n, 0)
             st.rerun()
 
 

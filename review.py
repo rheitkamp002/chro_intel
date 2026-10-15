@@ -166,21 +166,86 @@ def set_accomplishment_status(ids: list[str], status: str) -> int:
             return cur.rowcount
 
 
-def set_status(role_ids: list[str], status: str) -> int:
-    """Approve or reject roles. Returns how many rows changed."""
+_HR_LEVELS = ("CHRO", "HR leader below CHRO")
+
+
+def resolve_current(rows: list[dict], batch_ids: set[str]) -> tuple[set[str], set[str]]:
+    """Pure. Make approval leave each executive with AT MOST ONE current role.
+
+    rows: every CURRENT role that is approved or in this batch, for the executives the batch
+    touches -- dicts with role_id, executive_id, company, role_level, start_date,
+    review_status. Returns (duplicate_ids, demote_ids):
+      * duplicate_ids -- batch drafts that repeat another current role at the SAME company
+        (a name/title variant of one job). They are set aside, never approved twice.
+      * demote_ids    -- current roles that stop being current because the person would
+        otherwise hold two (different employers): the HR role wins, then the latest start.
+    MEASURED 2026-10-15: a batch approval failed on exactly these cases.
+    """
+    from metrics import company_key
+    dup: set[str] = set()
+    demote: set[str] = set()
+    by_exec: dict[str, list[dict]] = {}
+    for r in rows:
+        by_exec.setdefault(r["executive_id"], []).append(r)
+    for rs in by_exec.values():
+        # Approved rows first, then dated before undated: the first of each company stays.
+        rs = sorted(rs, key=lambda r: (r["review_status"] != "approved",
+                                       r["start_date"] is None))
+        kept: list[dict] = []
+        for r in rs:
+            if any(company_key(k["company"]) == company_key(r["company"]) for k in kept):
+                if r["role_id"] in batch_ids and r["review_status"] != "approved":
+                    dup.add(r["role_id"])
+                continue
+            kept.append(r)
+        if len(kept) > 1:
+            def rank(r):
+                d = r["start_date"]
+                return (r["role_level"] in _HR_LEVELS, d is not None, d.toordinal() if d else 0)
+            winner = max(kept, key=rank)
+            demote |= {r["role_id"] for r in kept if r is not winner}
+    return dup, demote
+
+
+def set_status(role_ids: list[str], status: str) -> dict:
+    """Approve or reject roles. Returns counts: approved/rejected, duplicates, demoted."""
+    out = {"changed": 0, "duplicates": 0, "demoted": 0}
     if status not in ("approved", "rejected") or not role_ids:
-        return 0
+        return out
+    ids = set(role_ids)
     with connect() as conn:
         with conn.cursor() as cur:
             if status == "approved":
                 cur.execute("""
-                    update executive_role o set is_current = false, refreshed_at = now()
-                    from executive_role n
-                    where n.role_id = any(%s::uuid[]) and n.is_current
-                      and o.executive_id = n.executive_id and o.role_id <> n.role_id
-                      and o.is_current and o.review_status = 'approved'""", (role_ids,))
+                    select role_id::text as role_id, executive_id::text as executive_id,
+                           company_name_stated as company, role_level, start_date,
+                           review_status
+                    from executive_role
+                    where is_current
+                      and (role_id = any(%s::uuid[]) or review_status = 'approved')
+                      and executive_id in (select executive_id from executive_role
+                                           where role_id = any(%s::uuid[]) and is_current)""",
+                            (list(ids), list(ids)))
+                cols = [d.name for d in cur.description]
+                dup, demote = resolve_current([dict(zip(cols, r)) for r in cur.fetchall()], ids)
+                if dup:
+                    cur.execute("""
+                        update executive_role set review_status = 'rejected',
+                               notes = 'Duplicate of another current role at the same '
+                                       || 'company (set aside on approval). '
+                                       || coalesce(notes, ''),
+                               refreshed_at = now()
+                        where role_id = any(%s::uuid[])""", (list(dup),))
+                    out["duplicates"] = len(dup)
+                    ids -= dup
+                if demote:
+                    cur.execute("""update executive_role set is_current = false,
+                                   refreshed_at = now() where role_id = any(%s::uuid[])""",
+                                (list(demote),))
+                    out["demoted"] = len(demote)
             cur.execute("""
                 update executive_role set review_status = %s, refreshed_at = now()
                 where role_id = any(%s::uuid[]) and review_status = 'draft'""",
-                        (status, role_ids))
-            return cur.rowcount
+                        (status, list(ids)))
+            out["changed"] = cur.rowcount
+    return out

@@ -69,7 +69,8 @@ def company_key(name: str | None) -> str:
     """Pure. Normalized company name for matching."""
     s = (clean_company(name) or "").lower()
     s = re.sub(r"[^\w\s]", " ", s)
-    s = re.sub(r"\b(the|inc|corp|corporation|co|company|llc|plc|ltd|group)\b", " ", s)
+    s = re.sub(r"\b(the|inc|corp|corporation|co|company|companies|llc|plc|ltd|group|holding|"
+               r"holdings)\b", " ", s)
     return " ".join(s.split())
 
 

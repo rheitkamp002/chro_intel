@@ -187,6 +187,36 @@ def test_validate_rejects_unknown_event_and_missing_source():
     assert accomplishments.validate(_item(source_url=""), _EVS, _CRIT)
 
 
+def test_resolve_current_handles_the_production_cases():
+    import review
+    D = _D
+    rows = [
+        # Pinkham: approved + draft duplicate under a company-name variant
+        {"role_id": "p1", "executive_id": "P", "company": "Albertsons", "role_level": "CHRO",
+         "start_date": D(2026, 2, 1), "review_status": "approved"},
+        {"role_id": "p2", "executive_id": "P", "company": "Albertsons Companies",
+         "role_level": "CHRO", "start_date": None, "review_status": "draft"},
+        # Burrus: two drafts, different employers, the HR one should stay current
+        {"role_id": "b1", "executive_id": "B", "company": "Choctaw Nation of Oklahoma",
+         "role_level": "CHRO", "start_date": None, "review_status": "draft"},
+        {"role_id": "b2", "executive_id": "B", "company": "University of Southern Mississippi",
+         "role_level": "Academic", "start_date": None, "review_status": "draft"},
+        # Job change: new external CHRO role beats the older approved one
+        {"role_id": "j1", "executive_id": "J", "company": "Verizon", "role_level": "CHRO",
+         "start_date": D(2020, 1, 1), "review_status": "approved"},
+        {"role_id": "j2", "executive_id": "J", "company": "Cencora", "role_level": "CHRO",
+         "start_date": D(2026, 7, 13), "review_status": "draft"},
+    ]
+    dup, demote = review.resolve_current(rows, {"p2", "b1", "b2", "j2"})
+    assert dup == {"p2"}, dup
+    assert demote == {"b2", "j1"}, demote
+
+
+def test_company_key_strips_companies_and_holding():
+    assert metrics.company_key("Albertsons Companies") == metrics.company_key("Albertsons")
+    assert metrics.company_key("Ingram Micro Holding") == metrics.company_key("Ingram Micro")
+
+
 def test_group_duplicates_matches_either_key():
     import review
     rows = [{"name_key": "christy pambianchi", "alt_name_key": None, "canonical_name": "a"},
