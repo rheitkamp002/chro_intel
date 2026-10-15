@@ -98,6 +98,11 @@ create table if not exists executive_role (
   refreshed_at          timestamptz not null default now()
 );
 create index if not exists ix_role_exec on executive_role (executive_id);
+-- 2026-10-15: research provenance for roster drafts.
+alter table executive_role add column if not exists confidence text
+  check (confidence in ('high','medium','low'));
+alter table executive_role add column if not exists second_source_url text;
+alter table executive_role add column if not exists research_batch text;  -- e.g. 'F100_2026'
 -- At most one APPROVED current role per executive.
 create unique index if not exists ux_role_one_current on executive_role (executive_id)
   where is_current and review_status = 'approved';

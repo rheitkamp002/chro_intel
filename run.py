@@ -3,6 +3,7 @@
 Usage:
     python run.py schema     # create any missing tables from schema.sql (safe to re-run)
     python run.py seed       # load award programs + the seed workbook (safe to re-run)
+    python run.py roster     # load Fortune 100 / A&D CHRO research as DRAFTS (safe to re-run)
     python run.py checkup    # read-only wrap-up checks
 
 Launch the dashboard with:  streamlit run app.py
@@ -33,8 +34,10 @@ def apply_schema() -> None:
 
 def _steps() -> dict:
     import checkup
+    import roster
     import seed
-    return {"schema": apply_schema, "seed": seed.run, "checkup": checkup.run}
+    return {"schema": apply_schema, "seed": seed.run, "roster": roster.run,
+            "checkup": checkup.run}
 
 
 def main(argv: list[str]) -> int:

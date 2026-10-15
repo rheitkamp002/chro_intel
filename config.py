@@ -92,6 +92,13 @@ INDUSTRIES = (
     "Transportation & Logistics", "Utilities",
 )
 
+# The 8 companies the A&D app tracks (`ad_intel/config.py` COMPANIES, read 2026-10-15).
+# Their CHROs are FORCE-ADDED as the 'AD_TRACKED' peer set, whatever their Fortune rank.
+# Copied by hand: this app never imports from ad_intel. If A&D's list changes, update here.
+AD_TRACKED = ("Lockheed Martin", "RTX", "Northrop Grumman", "General Dynamics", "Boeing",
+              "L3Harris Technologies", "Huntington Ingalls Industries",
+              "Palantir Technologies")
+
 # Companies flagged is_aerospace_defense. The A&D overlap is a FILTER here, nothing more.
 AD_COMPANIES = (
     "Lockheed Martin", "RTX", "Northrop Grumman", "General Dynamics", "Boeing", "L3Harris",

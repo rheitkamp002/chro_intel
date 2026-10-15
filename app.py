@@ -123,11 +123,16 @@ def load_programs() -> list[dict]:
 def load_roles() -> dict[str, list[dict]]:
     with connect() as conn:
         rows = fetch_all(conn, """
-            select r.executive_id::text as executive_id, r.title, r.company_name_stated,
-                   r.role_level, r.start_date, r.end_date, r.is_current, r.hire_type,
-                   r.source_url, r.source_type, r.verified_date
-            from executive_role r where r.review_status = 'approved'
-            order by r.start_date desc nulls last""")
+            select r.executive_id::text as executive_id, x.canonical_name, x.executive_type,
+                   r.company_id::text as company_id, r.title, r.company_name_stated,
+                   r.role_level, r.start_date, r.start_precision, r.end_date, r.is_current,
+                   r.hire_type, r.source_url, r.source_type, r.verified_date, r.confidence,
+                   c.industry, c.is_aerospace_defense
+            from executive_role r
+            join executive x using (executive_id)
+            left join company c using (company_id)
+            where r.review_status = 'approved'
+            order by r.is_current desc, r.start_date desc nulls last""")
     out: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         out[r["executive_id"]].append(r)
@@ -154,6 +159,20 @@ def load_accomplishments() -> dict[str, list[dict]]:
     for r in rows:
         out[r["executive_id"]].append(r)
     return out
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_peer_sets() -> tuple[list[dict], list[dict]]:
+    with connect() as conn:
+        sets = fetch_all(conn, "select * from peer_set order by peer_set_key desc")
+        members = fetch_all(conn, """
+            select m.peer_set_key, m.rank_in_set, c.company_id::text as company_id, c.name,
+                   c.industry, c.revenue_usd_m, c.employees, c.is_aerospace_defense,
+                   (select count(*) from executive_role r where r.company_id = c.company_id
+                      and r.is_current and r.review_status = 'draft') as drafts
+            from company_peer_set m join company c using (company_id)
+            order by m.peer_set_key, m.rank_in_set nulls last, c.name""")
+    return sets, members
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -188,21 +207,32 @@ def event_label(e: dict) -> str:
 
 def build_rows(events: list[dict], window: tuple[int, ...], include_secondary: bool,
                roles: dict, accomplishments: dict) -> list[dict]:
-    """One row per executive with metrics and the last known employer."""
+    """One row per executive -- recognized, or with an approved role -- with metrics and the
+    current employer (verified role) or else the last employer stated at recognition."""
     by_exec: dict[str, list[dict]] = defaultdict(list)
     for e in events:
         by_exec[e["executive_id"]].append(e)
+    for xid in roles:
+        by_exec.setdefault(xid, [])
     rows = []
     for xid, evs in by_exec.items():
         s = metrics.summarize(evs, window, include_secondary)
-        latest_ev = max(evs, key=lambda e: e["recognition_year"])
         current = next((r for r in roles.get(xid, []) if r["is_current"]), None)
+        latest_ev = max(evs, key=lambda e: e["recognition_year"]) if evs else {
+            "canonical_name": roles[xid][0]["canonical_name"],
+            "executive_type": roles[xid][0]["executive_type"],
+            "company_at_recognition": None, "title_at_recognition": None,
+            "industry": None, "is_aerospace_defense": False}
+        if current:                       # the verified employer decides industry and A&D
+            latest_ev = {**latest_ev, "industry": current["industry"],
+                         "is_aerospace_defense": current["is_aerospace_defense"]}
         keys = {e["program_key"] for e in evs if e["status"] == "published"
                 and (e["recognition_year"] in window or metrics.is_standing(e))}
         l40 = [e for e in evs if e["program_key"] == "N2_L40" and e["recognition_year"] in window]
         themes = sorted({t for a in accomplishments.get(xid, []) for t in a["themes"]})
         rows.append({
             "executive_id": xid,
+            "company_id": current["company_id"] if current else None,
             "Executive": latest_ev["canonical_name"],
             "executive_type": latest_ev["executive_type"],
             "Company": current["company_name_stated"] if current else (
@@ -250,8 +280,9 @@ PROG_BY_KEY = {p["program_key"]: p for p in PROGRAMS}
 ALL_ROWS = build_rows(EVENTS, WINDOW, False, ROLES, ACCOMPLISHMENTS)
 NAME_BY_ID = {r["executive_id"]: r["Executive"] for r in ALL_ROWS}
 
-_TABS = [("Overview", "overview"), ("Compare", "compare"), ("CHRO profile", "profile"),
-         ("Award criteria", "criteria"), ("Data status", "status")]
+_TABS = [("Overview", "overview"), ("Compare", "compare"), ("Peer sets", "peers"),
+         ("CHRO profile", "profile"), ("Award criteria", "criteria"), ("Review", "review"),
+         ("Data status", "status")]
 _T = dict(zip([k for _, k in _TABS], st.tabs([lbl for lbl, _ in _TABS])))
 
 
@@ -347,6 +378,139 @@ with _T["compare"]:
                  })
 
 
+# ----- Peer sets
+def _tenure(start) -> str:
+    if not start:
+        return "—"
+    from datetime import date
+    years = (date.today() - start).days / 365.25
+    return f"{years:.1f} yrs (since {start:%b %Y})"
+
+
+with _T["peers"]:
+    SETS, MEMBERS = load_peer_sets()
+    if not SETS:
+        st.write("No peer sets loaded yet — run `run.py roster`.")
+    else:
+        key_by_label = {s["label"]: s["peer_set_key"] for s in SETS}
+        ps = key_by_label[st.selectbox("Peer set", list(key_by_label), key="peer_set")]
+        meta = next(s for s in SETS if s["peer_set_key"] == ps)
+        st.caption(meta["description"] or "")
+        by_company = {r["company_id"]: r for r in ALL_ROWS if r["company_id"]}
+        roles_by_company = {r["company_id"]: r for rs in ROLES.values() for r in rs
+                            if r["is_current"]}
+        out = []
+        for m in [m for m in MEMBERS if m["peer_set_key"] == ps]:
+            row = by_company.get(m["company_id"])
+            role = roles_by_company.get(m["company_id"])
+            if row:
+                if row["Strength"] > 0:
+                    note = (f"Recognized by {row['Breadth']} organization"
+                            f"{'s' if row['Breadth'] > 1 else ''}; most selective: "
+                            f"{row['Most prestigious']}.")
+                else:
+                    note = ("No core recognition in the window. This is not evidence of "
+                            "weak leadership — it indicates lower external visibility.")
+            else:
+                note = ("CHRO identified — awaiting review." if m["drafts"]
+                        else "CHRO not yet researched.")
+            out.append({
+                "Rank": m["rank_in_set"], "Company": m["name"],
+                "Industry": m["industry"] or "Not classified",
+                "CHRO": row["Executive"] if row else "—",
+                "Title": role["title"] if role else "—",
+                "Tenure": _tenure(role["start_date"]) if role else "—",
+                "Hire": (role["hire_type"] or "—") if role else "—",
+                "Strength": row["Strength"] if row else None,
+                "Breadth": row["Breadth"] if row else None,
+                "Latest": row["Latest"] if row else "—",
+                "Note": note,
+            })
+        verified = sum(1 for o in out if o["CHRO"] != "—")
+        recognized = sum(1 for o in out if (o["Strength"] or 0) > 0)
+        k = st.columns(3)
+        k[0].metric("Companies", len(out))
+        k[1].metric("CHRO verified", f"{verified} / {len(out)}")
+        k[2].metric("With core recognition", recognized)
+        if not meta["is_complete"]:
+            st.caption("This peer set is not yet complete, so recognition rates and "
+                       "percentiles are withheld — they would be biased by who has been "
+                       "verified so far.")
+        st.dataframe(pd.DataFrame(out), hide_index=True, width="stretch", height=560,
+                     column_config={"Strength": st.column_config.NumberColumn(format="%g")})
+
+
+# ----- Review
+with _T["review"]:
+    import review
+    st.caption("Research drafts wait here until approved. Only approved rows appear "
+               "elsewhere in the app. Check the source link before approving.")
+    dupes = review.possible_duplicates()
+    if dupes:
+        st.subheader("Possible duplicates")
+        st.caption("Same name, different employer. Merge only if you are sure it is the same "
+                   "person (e.g. they changed jobs). Recognition history keeps the employer "
+                   "at the time.")
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for d in dupes:
+            groups[d["name_key"]].append(d)
+        for nk, ds in groups.items():
+            with st.container(border=True):
+                for d in ds:
+                    st.markdown(f"**{d['canonical_name']}** — {d['companies'] or 'no employer'}")
+                if len(ds) == 2 and st.button("Same person — merge", key=f"merge_{nk}"):
+                    keep, drop = ds
+                    review.merge_executives(keep["executive_id"], drop["executive_id"])
+                    st.cache_data.clear()
+                    st.rerun()
+        st.subheader("Draft roles")
+    drafts = review.draft_roles()
+    if not drafts:
+        st.write("Nothing awaiting review.")
+    else:
+        r1, r2 = st.columns([1, 2])
+        conf_sel = r1.multiselect("Confidence", ["high", "medium", "low", "unrated"],
+                                  default=["high", "medium", "low", "unrated"], key="rv_conf")
+        shown = [d for d in drafts if (d["confidence"] or "unrated") in conf_sel]
+        r2.caption(f"{len(shown)} of {len(drafts)} drafts shown. Current roles first, by "
+                   "Fortune rank. A prior role is the job before the current one.")
+        df = pd.DataFrame([{
+            "Decision": "", "Company": d["company_name_stated"],
+            "Rank": d["fortune_rank"], "Executive": d["canonical_name"], "Title": d["title"],
+            "Kind": "current" if d["is_current"] else "prior",
+            "Since": d["start_date"], "Hire": d["hire_type"] or "",
+            "Confidence": d["confidence"] or "unrated", "Notes": d["notes"] or "",
+            "Source": d["source_url"], "Second source": d["second_source_url"],
+            "role_id": d["role_id"],
+        } for d in shown])
+        edited = st.data_editor(
+            df, key="rv_editor", hide_index=True, width="stretch", height=520,
+            disabled=[c for c in df.columns if c != "Decision"],
+            column_order=[c for c in df.columns if c != "role_id"],
+            column_config={
+                "Decision": st.column_config.SelectboxColumn(
+                    options=["", "Approve", "Reject"], width="small"),
+                "Source": st.column_config.LinkColumn(display_text="open"),
+                "Second source": st.column_config.LinkColumn(display_text="open"),
+            })
+        b1, b2 = st.columns(2)
+        if b1.button("Apply decisions", key="rv_apply", type="primary"):
+            ok = review.set_status(
+                list(edited.loc[edited["Decision"] == "Approve", "role_id"]), "approved")
+            no = review.set_status(
+                list(edited.loc[edited["Decision"] == "Reject", "role_id"]), "rejected")
+            st.cache_data.clear()
+            st.success(f"{ok} approved, {no} rejected.")
+            st.rerun()
+        high = [d["role_id"] for d in shown if d["confidence"] == "high"]
+        if b2.button(f"Approve all {len(high)} high-confidence drafts shown", key="rv_high",
+                     disabled=not high):
+            n = review.set_status(high, "approved")
+            st.cache_data.clear()
+            st.success(f"{n} approved.")
+            st.rerun()
+
+
 # ----- Profile
 with _T["profile"]:
     ids = sorted(NAME_BY_ID, key=lambda i: NAME_BY_ID[i].lower())
@@ -361,6 +525,9 @@ with _T["profile"]:
         st.markdown(f"**{current['title']}**, {current['company_name_stated']}  \n"
                     f"<span class='muted'>Current role verified {current['verified_date']} "
                     f"({current['source_type']})</span>", unsafe_allow_html=True)
+    elif not evs:
+        st.markdown("<span class='muted'>No current role verified and no recognitions.</span>",
+                    unsafe_allow_html=True)
     else:
         latest = evs[0]
         st.markdown(f"**{latest['title_at_recognition'] or 'Title not stated'}**, "

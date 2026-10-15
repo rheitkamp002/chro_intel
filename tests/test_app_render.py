@@ -26,7 +26,7 @@ def _app() -> AppTest:
 
 def test_renders_all_tabs():
     at = _app()
-    assert len(at.tabs) == 5
+    assert len(at.tabs) == 7
     assert at.title[0].value == "CHRO External Recognition"
     assert not at.error, [e.value for e in at.error]
 
@@ -64,6 +64,19 @@ def test_compare_filters_do_not_crash():
     assert not at.exception, [e.value for e in at.exception]
 
 
+def test_peer_sets_and_review_render():
+    at = _app()
+    sb = at.selectbox(key="peer_set")
+    for i in range(len(sb.options)):
+        at.selectbox(key="peer_set").select_index(i)
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+    # Review renders its editor when drafts exist; filtering must not crash.
+    at.multiselect(key="rv_conf").set_value(["high"])
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+
+
 def test_password_gate_blocks_until_correct():
     os.environ["APP_PASSWORD"] = "test-pw"
     try:
@@ -75,7 +88,7 @@ def test_password_gate_blocks_until_correct():
         assert at.error and len(at.tabs) == 0
         at.text_input(key="pw").input("test-pw")
         at.run()
-        assert not at.exception and len(at.tabs) == 5
+        assert not at.exception and len(at.tabs) == 7
     finally:
         os.environ.pop("APP_PASSWORD", None)
 

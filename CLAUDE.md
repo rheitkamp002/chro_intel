@@ -36,7 +36,14 @@ Fortune 100 peer set (A&D is a filter, `company.is_aerospace_defense`).
   Neon suspends after ~5 idle minutes; the first query after that is a little slower.
 - **Hosting: Streamlit Community Cloud as a PUBLIC app behind a password** (`APP_PASSWORD`
   secret). The account's one private-app slot is used by A&D. No password set => no gate,
-  which is how it runs locally.
+  which is how it runs locally. VERIFIED LIVE 2026-10-15: deployed, password screen shown
+  first, tabs render after it. Secrets (`DATABASE_URL`, `APP_PASSWORD`) live in the
+  Streamlit app's Secrets box only.
+- **GitHub: `rheitkamp002/chro_intel` is a PUBLIC repo** — Community Cloud would not deploy
+  a public app from a private repo while the private slot is taken. So: **never commit data,
+  research CSVs, `.env` or anything secret.** The data's only protection is the password.
+  Commits use the GitHub noreply email (set in this repo's git config) so the owner's Gmail
+  is not exposed; history was rewritten once on 2026-10-15 for this.
 
 ## Commands (PowerShell, from this folder)
 
@@ -48,7 +55,17 @@ Fortune 100 peer set (A&D is a filter, `company.is_aerospace_defense`).
 |---|---|
 | `schema` | Run `schema.sql`. Every statement is `if not exists` — it only ever ADDS |
 | `seed` | Load `programs.py` + the seed workbook. Safe to re-run (see below) |
+| `roster` | Load `../research/` Fortune 100 + A&D CHRO research as DRAFTS. Safe to re-run |
 | `checkup` | Read-only wrap-up checks. Run at the end of every piece of work |
+
+**Roster research (2026-10-15).** Done by Claude agents with web search, written as CSVs to
+`../research/` (outside the public repo). Peer sets: `F100_2026` (2026 Fortune 500 ranks
+1-100, fortune.com) and `AD_TRACKED` (the 8 companies in `ad_intel/config.py`, copied into
+`config.AD_TRACKED` — update by hand if A&D's list changes). MEASURED after load: 95 CHROs
+identified, 174 draft roles (current + prior), 7 companies with no CHRO identified
+(Alphabet, Berkshire, Verizon, Tesla, TJX, General Dynamics, Palantir). Drafts become
+visible only after approval in the **Review** tab; the Review tab also merges duplicates
+that a person confirms are the same individual (e.g. a CHRO who changed employers).
 
 **Launch the dashboard:** `.venv\Scripts\streamlit.exe run app.py`
 
@@ -111,7 +128,7 @@ executives. 9 people appear more than once and were merged correctly.
 
 ## Still to build
 
-1. **Publish** to GitHub (private repo) and Streamlit Community Cloud.
+1. ~~Publish~~ — DONE 2026-10-15.
 2. **Research: accomplishments** — per recognition, from the award body's own write-up;
    Claude drafts with citations, mapped to `program_criterion`, analyst approves.
 3. **Research: Fortune 100 CHRO roster** — current CHRO per company with a verified source,
