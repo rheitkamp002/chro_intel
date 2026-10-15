@@ -71,10 +71,11 @@ def test_peer_sets_and_review_render():
         at.selectbox(key="peer_set").select_index(i)
         at.run()
         assert not at.exception, [e.value for e in at.exception]
-    # Review renders its editor when drafts exist; filtering must not crash.
-    at.multiselect(key="rv_conf").set_value(["high"])
-    at.run()
-    assert not at.exception, [e.value for e in at.exception]
+    # Review renders its editor only when drafts exist; filtering must not crash.
+    if any(m.key == "rv_conf" for m in at.multiselect):
+        at.multiselect(key="rv_conf").set_value(["high"])
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
 
 
 def test_password_gate_blocks_until_correct():

@@ -276,6 +276,12 @@ except Exception as exc:                     # a paused/unreachable database is 
              "it may be waking up — reload in a few seconds.")
     st.stop()
 
+SETS, MEMBERS = load_peer_sets()
+_SET_LABEL = {s["peer_set_key"]: s["label"] for s in SETS}
+PEER_LABELS = [s["label"] for s in SETS]
+PEERS_BY_COMPANY: dict[str, set[str]] = defaultdict(set)
+for _m in MEMBERS:
+    PEERS_BY_COMPANY[_m["company_id"]].add(_SET_LABEL[_m["peer_set_key"]])
 PROG_BY_KEY = {p["program_key"]: p for p in PROGRAMS}
 ALL_ROWS = build_rows(EVENTS, WINDOW, False, ROLES, ACCOMPLISHMENTS)
 NAME_BY_ID = {r["executive_id"]: r["Executive"] for r in ALL_ROWS}
@@ -292,14 +298,21 @@ with _T["overview"]:
     practitioners = [r for r in ALL_ROWS if r["executive_type"] == "practitioner"]
     recognized = [r for r in practitioners if r["Strength"] > 0]
     multi = [r for r in recognized if r["Breadth"] >= 2]
-    c = st.columns(4)
-    c[0].metric("Leaders with core recognition", len(recognized),
-                help="Practitioners with at least one qualifying core recognition.")
-    c[1].metric("Recognized by 2+ organizations", len(multi))
-    c[2].metric("NAHR Fellows", sum(r["NAHR Fellow"] for r in recognized))
-    c[3].metric("Finalist-level only", sum(1 for r in practitioners
+    c = st.columns(5)
+    c[0].metric("HR leaders tracked", len(practitioners),
+                help="Every practitioner in the app: award recipients plus verified CHROs of "
+                     "peer-set companies, recognized or not.")
+    c[1].metric("With core recognition", len(recognized),
+                help="At least one qualifying core recognition.")
+    c[2].metric("Recognized by 2+ organizations", len(multi))
+    c[3].metric("NAHR Fellows", sum(r["NAHR Fellow"] for r in recognized))
+    c[4].metric("Finalist-level only", sum(1 for r in practitioners
                                            if r["Strength"] == 0 and r["Secondary"] > 0),
                 help="Leaders of Distinction with no core recognition in the window.")
+    unrec = [r for r in practitioners if r["Strength"] == 0 and r["Secondary"] == 0]
+    st.caption(f"{len(unrec)} tracked leaders have no recognition in the window. That "
+               "reflects external visibility, not leadership quality — see Compare or Peer "
+               "sets for the full list.")
 
     st.subheader("Recognized by multiple independent organizations")
     st.caption("Strength = most selective single recognition. Breadth = number of distinct "
@@ -342,30 +355,35 @@ with _T["compare"]:
     orgs = sorted({p["organization_short"] for p in PROGRAMS})
     org_sel = f[2].multiselect("Recognized by", orgs, key="cmp_org")
     search = f[3].text_input("Name or company contains", key="cmp_q")
-    g = st.columns([1, 1, 1, 1, 1.2])
-    min_strength = g[0].selectbox("Min strength", [0, 2, 3, 4, 5], key="cmp_ms")
-    min_breadth = g[1].selectbox("Min breadth", [0, 1, 2, 3], key="cmp_mb")
-    ad_only = g[2].checkbox("A&D only", key="cmp_ad")
-    incl_sec = g[3].checkbox("Include finalists in score", key="cmp_sec",
+    g = st.columns([1.4, 1, 1, 1, 1, 1.2, 1.2])
+    peer_sel = g[0].multiselect("Peer set", PEER_LABELS, key="cmp_peer")
+    min_strength = g[1].selectbox("Min strength", [0, 2, 3, 4, 5], key="cmp_ms")
+    min_breadth = g[2].selectbox("Min breadth", [0, 1, 2, 3], key="cmp_mb")
+    ad_only = g[3].checkbox("A&D only", key="cmp_ad")
+    recog_only = g[4].checkbox("Recognized only", key="cmp_recog",
+                               help="Hide CHROs with no recognition of any kind in the window.")
+    incl_sec = g[5].checkbox("Include finalists in score", key="cmp_sec",
                              help="Adds Leaders of Distinction to strength/breadth/composite. "
                                   "Off by default (spec: secondary recognition excluded).")
-    incl_acad = g[4].checkbox("Include academics", key="cmp_acad")
+    incl_acad = g[6].checkbox("Include academics", key="cmp_acad")
 
     window = WINDOW if year_sel == "Whole window" else (int(year_sel),)
     rows = build_rows(EVENTS, window, incl_sec, ROLES, ACCOMPLISHMENTS)
     q = search.strip().lower()
     rows = [r for r in rows
             if (incl_acad or r["executive_type"] == "practitioner")
-            and (r["Strength"] > 0 or r["Secondary"] > 0)
+            and (not recog_only or r["Strength"] > 0 or r["Secondary"] > 0)
+            and (not peer_sel or PEERS_BY_COMPANY.get(r["company_id"], set()) & set(peer_sel))
             and r["Strength"] >= min_strength and r["Breadth"] >= min_breadth
             and (not ind_sel or r["Industry"] in ind_sel)
             and (not org_sel or r["orgs"] & set(org_sel))
             and (not ad_only or r["A&D"])
             and (not q or q in r["Executive"].lower() or q in r["Company"].lower())]
-    st.caption(f"{len(rows)} leaders. Sorted by strength, then breadth, then composite. "
-               "Company/title are as stated at the latest recognition unless the current "
-               "role has been verified.")
-    cols = ["Executive", "Company", "Industry", "NAHR Fellow", "HR Exec of Year",
+    st.caption(f"{len(rows)} leaders, recognized or not. Sorted by strength, then breadth, "
+               "then composite. A strength of 0 means no core recognition in the window — "
+               "not weaker leadership. Company/title are the verified current role, or else "
+               "as stated at the latest recognition.")
+    cols = ["Executive", "Company", "Title", "Industry", "Role verified", "NAHR Fellow", "HR Exec of Year",
             "HRO CHRO of Year", "Leaders40", "Secondary", "Strength", "Breadth", "Composite",
             "Latest", "Themes"]
     st.dataframe(pd.DataFrame([{k: r[k] for k in cols} for r in rows], columns=cols),
@@ -388,7 +406,6 @@ def _tenure(start) -> str:
 
 
 with _T["peers"]:
-    SETS, MEMBERS = load_peer_sets()
     if not SETS:
         st.write("No peer sets loaded yet — run `run.py roster`.")
     else:
