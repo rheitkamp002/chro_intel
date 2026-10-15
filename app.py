@@ -126,7 +126,8 @@ def load_roles() -> dict[str, list[dict]]:
         rows = fetch_all(conn, """
             select r.executive_id::text as executive_id, x.canonical_name, x.executive_type,
                    r.company_id::text as company_id, r.title, r.company_name_stated,
-                   r.role_level, r.start_date, r.start_precision, r.end_date, r.is_current,
+                   r.role_level, r.function, r.start_date, r.start_precision, r.end_date,
+                   r.end_precision, r.is_current,
                    r.hire_type, r.source_url, r.source_type, r.verified_date, r.confidence,
                    c.industry, c.is_aerospace_defense
             from executive_role r
@@ -156,6 +157,20 @@ def load_accomplishments() -> dict[str, list[dict]]:
                              join program_criterion pc using (criterion_id)
                              where ac.accomplishment_id = a.accomplishment_id), '{}') as criteria
             from accomplishment a where a.review_status = 'approved'""")
+    out: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        out[r["executive_id"]].append(r)
+    return out
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_boards() -> dict[str, list[dict]]:
+    with connect() as conn:
+        rows = fetch_all(conn, """
+            select executive_id::text as executive_id, organization, organization_type,
+                   seat_role, start_year, end_year, is_current, source_url
+            from board_seat where review_status = 'approved'
+            order by is_current desc nulls last, start_year desc nulls last""")
     out: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         out[r["executive_id"]].append(r)
@@ -249,6 +264,7 @@ def build_rows(events: list[dict], window: tuple[int, ...], include_secondary: b
                 and (e["recognition_year"] in window or metrics.is_standing(e))}
         l40 = [e for e in evs if e["program_key"] == "N2_L40" and e["recognition_year"] in window]
         themes = sorted({t for a in accomplishments.get(xid, []) for t in a["themes"]})
+        cs = metrics.career_summary(roles.get(xid, []))
         rows.append({
             "executive_id": xid,
             "company_id": current["company_id"] if current else None,
@@ -272,6 +288,10 @@ def build_rows(events: list[dict], window: tuple[int, ...], include_secondary: b
             "Latest": event_label(s["latest"]) + f" ({s['latest_year']})" if s["latest"] else "—",
             "Most prestigious": event_label(s["top"]) if s["top"] else "—",
             "Themes": ", ".join(themes),
+            "Yrs as CHRO": cs["years_as_chro"],
+            "Non-HR experience": ("—" if cs["has_non_hr_experience"] is None else
+                                  ", ".join(cs["non_hr_functions"]) or "None found"),
+            "Boards (current)": sum(1 for b in BOARDS.get(xid, []) if b["is_current"]),
             "orgs": {e["organization_short"] for e in evs},
             "types": {e["recognition_type"] for e in evs},
             "years": {e["recognition_year"] for e in evs},
@@ -297,6 +317,7 @@ except Exception as exc:                     # a paused/unreachable database is 
 
 SETS, MEMBERS = load_peer_sets()
 GAPS, ACC_DRAFTS = load_research_state()
+BOARDS = load_boards()
 _SET_LABEL = {s["peer_set_key"]: s["label"] for s in SETS}
 PEER_LABELS = [s["label"] for s in SETS]
 PEERS_BY_COMPANY: dict[str, set[str]] = defaultdict(set)
@@ -411,7 +432,7 @@ with _T["compare"]:
                "as stated at the latest recognition.")
     cols = ["Executive", "Company", "Title", "Industry", "Role verified", "NAHR Fellow", "HR Exec of Year",
             "HRO CHRO of Year", "Leaders40", "Secondary", "Strength", "Breadth", "Composite",
-            "Latest", "Themes"]
+            "Latest", "Yrs as CHRO", "Non-HR experience", "Boards (current)", "Themes"]
     st.dataframe(pd.DataFrame([{k: r[k] for k in cols} for r in rows], columns=cols),
                  hide_index=True, width="stretch", height=560,
                  column_config={
@@ -575,6 +596,40 @@ with _T["review"]:
             st.rerun()
         st.subheader("Draft roles")
 
+    board_drafts = review.draft_boards()
+    if board_drafts:
+        st.subheader("Draft board seats")
+        st.caption("An influence signal shown on profiles — never scored as an award.")
+        bdf = pd.DataFrame([{
+            "Decision": "", "Executive": b["canonical_name"], "Organization": b["organization"],
+            "Type": b["organization_type"] or "", "Role": b["seat_role"] or "",
+            "Years": f"{b['start_year'] or '?'}–"
+                     + ("present" if b["is_current"] else str(b["end_year"] or "?")),
+            "Source": b["source_url"], "seat_id": b["seat_id"],
+        } for b in board_drafts])
+        bed = st.data_editor(
+            bdf, key="board_editor", hide_index=True, width="stretch", height=360,
+            disabled=[c for c in bdf.columns if c != "Decision"],
+            column_order=[c for c in bdf.columns if c != "seat_id"],
+            column_config={"Decision": st.column_config.SelectboxColumn(
+                               options=["", "Approve", "Reject"], width="small"),
+                           "Source": st.column_config.LinkColumn(display_text="open")})
+        c1, c2 = st.columns(2)
+        if c1.button("Apply board-seat decisions", key="board_apply", type="primary"):
+            ok = review.set_board_status(
+                list(bed.loc[bed["Decision"] == "Approve", "seat_id"]), "approved")
+            no = review.set_board_status(
+                list(bed.loc[bed["Decision"] == "Reject", "seat_id"]), "rejected")
+            st.cache_data.clear()
+            st.success(f"{ok} approved, {no} rejected.")
+            st.rerun()
+        if c2.button(f"Approve all {len(board_drafts)} board seats shown", key="board_all"):
+            n = review.set_board_status([b["seat_id"] for b in board_drafts], "approved")
+            st.cache_data.clear()
+            st.success(f"{n} approved.")
+            st.rerun()
+        st.subheader("Draft roles")
+
     drafts = review.draft_roles()
     if not drafts:
         st.write("Nothing awaiting review.")
@@ -589,7 +644,8 @@ with _T["review"]:
             "Decision": "", "Company": d["company_name_stated"],
             "Rank": d["fortune_rank"], "Executive": d["canonical_name"], "Title": d["title"],
             "Kind": "current" if d["is_current"] else "prior",
-            "Since": d["start_date"], "Hire": d["hire_type"] or "",
+            "Function": d["function"] or "",
+            "Since": d["start_date"], "Until": d["end_date"], "Hire": d["hire_type"] or "",
             "Confidence": d["confidence"] or "unrated", "Notes": d["notes"] or "",
             "Source": d["source_url"], "Second source": d["second_source_url"],
             "role_id": d["role_id"],
@@ -623,6 +679,84 @@ with _T["review"]:
 
 
 # ----- Profile
+def _fmt_span(r: dict) -> str:
+    def one(d, prec):
+        if not d:
+            return "?"
+        return f"{d:%Y}" if prec == "year" else f"{d:%b %Y}"
+    end = one(r["end_date"], r.get("end_precision")) if r["end_date"] else (
+        "present" if r["is_current"] else "?")
+    return f"{one(r['start_date'], r.get('start_precision'))} – {end}"
+
+
+def render_career(xid: str, current: dict | None) -> None:
+    """Career & tenure: derived measures, a timeline, the role list and board seats."""
+    import plotly.express as px
+    st.subheader("Career & tenure")
+    roles = ROLES.get(xid, [])
+    seats = BOARDS.get(xid, [])
+    if not roles and not seats:
+        st.write("Not yet researched.")
+        return
+    cs = metrics.career_summary(roles)
+    m = st.columns(5)
+    m[0].metric("Time in current role",
+                _tenure(current["start_date"]).split(" (")[0] if current else "—")
+    m[1].metric("Hired", ((current or {}).get("hire_type") or "not stated").capitalize(),
+                help="Internal = promoted from within; external = joined to take the role.")
+    yrs = cs["years_as_chro"]
+    m[2].metric("Years as CHRO", "—" if yrs is None else
+                (f"{yrs:g}+" if cs["years_as_chro_is_lower_bound"] else f"{yrs:g}"),
+                help=f"Across {cs['chro_roles']} CHRO role(s), overlaps counted once. '+' = "
+                     "a CHRO role with no stated start date, so this is a lower bound.")
+    m[3].metric("Years to first CHRO role",
+                "—" if cs["years_to_chro"] is None else f"{cs['years_to_chro']:g}",
+                help="From the earliest role on file — only as complete as the history found.")
+    m[4].metric("Experience outside HR",
+                "Not stated" if cs["has_non_hr_experience"] is None else
+                (", ".join(cs["non_hr_functions"]) if cs["has_non_hr_experience"] else "None found"))
+
+    dated = [r for r in roles if r["start_date"]]
+    if dated:
+        df = pd.DataFrame([{
+            "Role": f"{r['title']} — {r['company_name_stated']}",
+            "Start": r["start_date"], "End": r["end_date"] or _date.today(),
+            "Function": r.get("function") or "Not stated",
+        } for r in sorted(dated, key=lambda r: r["start_date"])])
+        fig = px.timeline(df, x_start="Start", x_end="End", y="Role", color="Function",
+                          color_discrete_map={"HR": "#3b6fb6", "Finance": "#b8860b",
+                                              "Operations": "#59A14F",
+                                              "Not stated": "#9aa3b2"})
+        fig.update_yaxes(autorange="reversed", title=None)
+        fig.update_layout(height=70 + 34 * len(df), margin=dict(l=10, r=10, t=10, b=10),
+                          legend=dict(orientation="h", y=-0.25, title=None))
+        st.plotly_chart(fig, width="stretch", key=f"career_tl_{xid}")
+    undated = [r for r in roles if not r["start_date"]]
+    with st.expander(f"All roles on file ({len(roles)})", expanded=not dated):
+        for r in roles:
+            st.markdown(f"**{r['title']}**, {r['company_name_stated']}  \n"
+                        f"<span class='muted'>{_fmt_span(r)}"
+                        + (f" · {r['function']}" if r.get("function") else "")
+                        + (f" · {r['hire_type']} hire" if r["hire_type"] else "")
+                        + (f" · <a href='{r['source_url']}' target='_blank'>source</a>"
+                           if r["source_url"] else "")
+                        + "</span>", unsafe_allow_html=True)
+        if undated:
+            st.caption(f"{len(undated)} role(s) have no stated dates and are not on the "
+                       "timeline.")
+
+    st.markdown("**Board seats** <span class='muted'>(an influence signal — not scored)"
+                "</span>", unsafe_allow_html=True)
+    if not seats:
+        st.markdown("<span class='muted'>None found.</span>", unsafe_allow_html=True)
+    for s_ in seats:
+        when = (f"{s_['start_year'] or '?'}–{'present' if s_['is_current'] else (s_['end_year'] or '?')}")
+        st.markdown(f"• **{s_['organization']}** — {s_['seat_role'] or 'Board member'} "
+                    f"<span class='muted'>({s_['organization_type'] or 'type not stated'}, "
+                    f"{when}) · <a href='{s_['source_url']}' target='_blank'>source</a></span>",
+                    unsafe_allow_html=True)
+
+
 with _T["profile"]:
     ids = sorted(NAME_BY_ID, key=lambda i: NAME_BY_ID[i].lower())
     xid = st.selectbox("Executive", ids, format_func=lambda i: NAME_BY_ID[i], key="prof_exec")
@@ -722,25 +856,7 @@ with _T["profile"]:
                                 + (f" — {c['description']}" if c["description"] else "")
                                 + "</p>", unsafe_allow_html=True)
 
-        st.subheader("Career & tenure")
-        roles = ROLES.get(xid, [])
-        if not roles:
-            st.write("Not yet researched.")
-        if current:
-            t = st.columns(2)
-            t[0].metric("Time in current role", _tenure(current["start_date"]).split(" (")[0],
-                        help="From the verified start date"
-                             + (f" (precision: {current['start_precision']})"
-                                if current.get("start_precision") else "") + ".")
-            t[1].metric("Hired", (current["hire_type"] or "not stated").capitalize(),
-                        help="Internal = promoted from within; external = joined to take "
-                             "the role.")
-        for r in roles:
-            span = f"{r['start_date'] or '?'} – {r['end_date'] or ('present' if r['is_current'] else '?')}"
-            st.markdown(f"**{r['title']}**, {r['company_name_stated']}  \n"
-                        f"<span class='muted'>{span}"
-                        + (f" · {r['hire_type']} hire" if r["hire_type"] else "")
-                        + "</span>", unsafe_allow_html=True)
+    render_career(xid, current)
 
     st.subheader("Recognitions and sources")
     st.dataframe(pd.DataFrame([{

@@ -54,7 +54,9 @@ def test_pdf_brief_builds():
 def test_profiles_render_for_varied_executives():
     at = _app()
     sb = at.selectbox(key="prof_exec")
-    want = {"Matthew Breitfelder", "Rob Ployhart", "Paul Gregory", "Paige Ross", "Riya Sood"}
+    # Donna Morris has dated approved roles, so the career timeline chart renders.
+    want = {"Matthew Breitfelder", "Rob Ployhart", "Paul Gregory", "Paige Ross", "Riya Sood",
+            "Donna Morris"}
     # `options` holds the format_func LABELS; the values are ids, so select by index.
     picked = [o for o in sb.options if o in want]
     assert len(picked) == len(want), f"missing executives: {want - set(picked)}"

@@ -103,6 +103,30 @@ alter table executive_role add column if not exists confidence text
   check (confidence in ('high','medium','low'));
 alter table executive_role add column if not exists second_source_url text;
 alter table executive_role add column if not exists research_batch text;  -- e.g. 'F100_2026'
+-- 2026-10-15: career research. The function a role sits in (config.FUNCTIONS).
+alter table executive_role add column if not exists function text
+  check (function in ('HR','Finance','Operations','Legal','Sales & Marketing',
+                      'General Management','Consulting','Technology','Communications','Other'));
+
+-- Board seats: a separate INFLUENCE signal (spec section 28), never scored as an award.
+create table if not exists board_seat (
+  seat_id            uuid primary key default gen_random_uuid(),
+  executive_id       uuid not null references executive(executive_id) on delete cascade,
+  organization       text not null,
+  organization_type  text check (organization_type in ('public company','private company',
+                       'non-profit','association','government/academic')),
+  seat_role          text,                     -- Director, Chair, Trustee ...
+  start_year         int,
+  end_year           int,
+  is_current         boolean,
+  source_url         text not null,
+  review_status      text not null default 'draft'
+                     check (review_status in ('draft','approved','rejected')),
+  research_batch     text,
+  notes              text,
+  refreshed_at       timestamptz not null default now(),
+  unique (executive_id, organization)
+);
 -- At most one APPROVED current role per executive.
 create unique index if not exists ux_role_one_current on executive_role (executive_id)
   where is_current and review_status = 'approved';

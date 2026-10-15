@@ -66,6 +66,10 @@ SEED_WORKBOOK = "../CHRO_Recognition_Benchmark_2025_2026.xlsx"
 # ----- Vocabularies (stored as text; the schema CHECKs mirror these) -----
 EXECUTIVE_TYPES = ("practitioner", "academic", "consultant", "other")
 ROLE_LEVELS = ("CHRO", "HR leader below CHRO", "Non-HR executive", "Academic", "Other")
+FUNCTIONS = ("HR", "Finance", "Operations", "Legal", "Sales & Marketing", "General Management",
+             "Consulting", "Technology", "Communications", "Other")
+BOARD_ORG_TYPES = ("public company", "private company", "non-profit", "association",
+                   "government/academic")
 # Spec section 22 verification hierarchy, strongest first.
 ROLE_SOURCE_TYPES = ("company_bio", "leadership_page", "sec_filing", "press_release",
                      "business_publication", "linkedin", "recognition_source")

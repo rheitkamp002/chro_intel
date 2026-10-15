@@ -112,6 +112,71 @@ def summarize(events: list[dict], window: Iterable[int],
     }
 
 
+_TITLE_STOP = {"and", "of", "the", "&", "officer", "chief", "vice", "president", "senior",
+               "executive", "evp", "svp", "vp", "global", "group", "head"}
+
+
+def title_key(title: str | None) -> frozenset[str]:
+    """Pure. Distinctive words of a title, for 'is this the same role?' comparisons."""
+    words = re.findall(r"[a-z]+", (title or "").lower())
+    return frozenset(w for w in words if w not in _TITLE_STOP)
+
+
+def same_role(a: dict, b: dict) -> bool:
+    """Pure. Two role rows describe the same job: same company, and the same start year
+    when both state one, else overlapping distinctive title words (or both empty)."""
+    if company_key(a.get("company")) != company_key(b.get("company")):
+        return False
+    ya, yb = a.get("start_year"), b.get("start_year")
+    if ya and yb:
+        return ya == yb
+    ka, kb = title_key(a.get("title")), title_key(b.get("title"))
+    if not ka or not kb:
+        return ka == kb
+    return len(ka & kb) / len(ka | kb) >= 0.5
+
+
+def _years(start, end) -> float:
+    return max(0.0, (end - start).days / 365.25)
+
+
+def career_summary(roles: list[dict], today=None) -> dict:
+    """Pure. Derived career measures from APPROVED roles.
+
+    roles: dicts with start_date, end_date, is_current, role_level, function.
+    Years as CHRO merges overlapping CHRO roles (no double counting). A CHRO role without a
+    start date is counted in `chro_roles` but adds no years -- stated as a lower bound.
+    """
+    from datetime import date as _d
+    today = today or _d.today()
+    chro = [r for r in roles if r.get("role_level") == "CHRO"]
+    spans = sorted((r["start_date"], r["end_date"] or (today if r.get("is_current") else None))
+                   for r in chro if r.get("start_date"))
+    spans = [(s, e) for s, e in spans if e]
+    merged: list[list] = []
+    for s, e in spans:
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    starts = [r["start_date"] for r in roles if r.get("start_date")]
+    chro_starts = [r["start_date"] for r in chro if r.get("start_date")]
+    functions = {r.get("function") for r in roles if r.get("function")}
+    non_hr = sorted(functions - {"HR", "Other"})
+    return {
+        "years_as_chro": round(sum(_years(s, e) for s, e in merged), 1) if merged else None,
+        "years_as_chro_is_lower_bound": any(not r.get("start_date") for r in chro),
+        "chro_roles": len(chro),
+        "first_chro_year": min(chro_starts).year if chro_starts else None,
+        "years_to_chro": (round(_years(min(starts), min(chro_starts)), 1)
+                          if starts and chro_starts else None),
+        "non_hr_functions": non_hr,
+        "has_non_hr_experience": bool(non_hr) if functions else None,
+        "employers": len({company_key(r.get("company_name_stated") or r.get("company"))
+                          for r in roles}),
+    }
+
+
 def fmt_weight(x: float | int | None) -> str:
     """Pure. 5.0 -> '5', 2.5 -> '2.5', None -> '—'."""
     if x is None:

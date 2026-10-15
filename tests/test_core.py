@@ -176,6 +176,52 @@ def test_validate_rejects_unknown_event_and_missing_source():
     assert accomplishments.validate(_item(source_url=""), _EVS, _CRIT)
 
 
+# ----- career -----
+import career  # noqa: E402
+from datetime import date as _D  # noqa: E402
+
+
+def test_same_role_by_start_year_and_title():
+    a = {"company": "Walmart", "title": "EVP & Chief People Officer", "start_year": 2020}
+    assert metrics.same_role(a, {"company": "Walmart Inc.", "title": "CPO", "start_year": 2020})
+    assert not metrics.same_role(a, {"company": "Walmart", "title": "x", "start_year": 2015})
+    assert not metrics.same_role(a, {"company": "Adobe", "title": "Chief People Officer",
+                                     "start_year": 2020})
+    # No years: falls back to distinctive title words.
+    assert metrics.same_role({"company": "IBM", "title": "Chief Human Resources Officer"},
+                             {"company": "IBM", "title": "SVP & Chief Human Resources Officer"})
+
+
+def test_career_summary_merges_overlaps_and_flags_non_hr():
+    roles = [
+        {"role_level": "CHRO", "function": "HR", "start_date": _D(2015, 1, 1),
+         "end_date": _D(2020, 1, 1), "is_current": False, "company_name_stated": "A"},
+        {"role_level": "CHRO", "function": "HR", "start_date": _D(2019, 1, 1),
+         "end_date": None, "is_current": True, "company_name_stated": "B"},
+        {"role_level": "Non-HR executive", "function": "Finance", "start_date": _D(2005, 1, 1),
+         "end_date": _D(2015, 1, 1), "is_current": False, "company_name_stated": "A"},
+    ]
+    s = metrics.career_summary(roles, today=_D(2025, 1, 1))
+    assert s["years_as_chro"] == 10.0, s          # 2015-2025, overlap counted once
+    assert s["chro_roles"] == 2 and s["first_chro_year"] == 2015
+    assert s["years_to_chro"] == 10.0
+    assert s["non_hr_functions"] == ["Finance"] and s["has_non_hr_experience"] is True
+    assert s["employers"] == 2
+
+
+def test_career_summary_unknown_is_none_not_zero():
+    s = metrics.career_summary([{"role_level": "CHRO", "is_current": True, "start_date": None,
+                                 "end_date": None}])
+    assert s["years_as_chro"] is None and s["years_as_chro_is_lower_bound"]
+    assert s["has_non_hr_experience"] is None      # no functions known => not stated
+
+
+def test_to_date_precision():
+    assert career.to_date(2021, 3) == (_D(2021, 3, 1), "month")
+    assert career.to_date(2021, None) == (_D(2021, 1, 1), "year")
+    assert career.to_date(None, 5) == (None, None)
+
+
 # ----- programs.py integrity -----
 def test_programs_have_identical_keys():
     keys = set(programs.PROGRAMS[0])

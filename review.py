@@ -14,7 +14,8 @@ def draft_roles() -> list[dict]:
     with connect() as conn:
         return fetch_all(conn, """
             select r.role_id::text as role_id, r.executive_id::text as executive_id,
-                   x.canonical_name, r.company_name_stated, r.title, r.role_level,
+                   x.canonical_name, r.company_name_stated, r.title, r.role_level, r.function,
+                   r.end_date,
                    r.start_date, r.start_precision, r.is_current, r.hire_type,
                    r.source_url, r.source_type, r.second_source_url, r.confidence,
                    r.research_batch, r.notes, c.fortune_rank
@@ -79,6 +80,28 @@ def merge_in(cur, keep_id: str, drop_id: str) -> None:
         cur.execute(f"update {table} set executive_id = %s where executive_id = %s",
                     (keep_id, drop_id))
     cur.execute("delete from executive where executive_id = %s", (drop_id,))
+
+
+def draft_boards() -> list[dict]:
+    with connect() as conn:
+        return fetch_all(conn, """
+            select b.seat_id::text as seat_id, x.canonical_name, b.organization,
+                   b.organization_type, b.seat_role, b.start_year, b.end_year, b.is_current,
+                   b.source_url
+            from board_seat b join executive x using (executive_id)
+            where b.review_status = 'draft'
+            order by x.canonical_name, b.organization""")
+
+
+def set_board_status(ids: list[str], status: str) -> int:
+    if status not in ("approved", "rejected") or not ids:
+        return 0
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""update board_seat set review_status = %s, refreshed_at = now()
+                           where seat_id = any(%s::uuid[]) and review_status = 'draft'""",
+                        (status, ids))
+            return cur.rowcount
 
 
 def draft_accomplishments() -> list[dict]:
