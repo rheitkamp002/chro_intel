@@ -281,6 +281,29 @@ def test_career_summary_unknown_is_none_not_zero():
     assert s["has_non_hr_experience"] is None      # no functions known => not stated
 
 
+def test_recipient_profile_medians_shares_and_coverage():
+    people = [
+        {"tenure_years": 2.0, "years_as_chro": 5.0, "chro_roles": 1, "hire_type": "internal",
+         "other_awards": 1, "boards_on_record": 1, "non_hr": True, "industry": "Retail",
+         "has_career": True},
+        {"tenure_years": 4.0, "years_as_chro": None, "chro_roles": 2, "hire_type": "external",
+         "other_awards": 0, "boards_on_record": 0, "non_hr": False, "industry": "Retail",
+         "has_career": True},
+        {"tenure_years": None, "years_as_chro": None, "chro_roles": None, "hire_type": None,
+         "other_awards": 0, "boards_on_record": None, "non_hr": None, "industry": None,
+         "has_career": False},
+    ]
+    p = metrics.recipient_profile(people)
+    assert p["recipients"] == 3
+    assert p["tenure_years"] == {"value": 3.0, "n": 2}
+    assert p["years_as_chro"] == {"value": 5.0, "n": 1}
+    assert p["internal_hire_pct"] == {"value": 50, "n": 2}
+    assert p["other_awards_pct"] == {"value": 33, "n": 3}
+    assert p["boards_pct"] == {"value": 50, "n": 2}       # only career-researched people
+    assert p["top_industries"] == [("Retail", 2)]
+    assert metrics.recipient_profile([])["tenure_years"] == {"value": None, "n": 0}
+
+
 def test_to_date_precision():
     assert career.to_date(2021, 3) == (_D(2021, 3, 1), "month")
     assert career.to_date(2021, None) == (_D(2021, 1, 1), "year")

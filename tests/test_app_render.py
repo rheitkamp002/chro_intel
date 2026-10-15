@@ -37,6 +37,7 @@ def test_award_criteria_order_brief_and_exclusions():
     # Ordered by weight: NAHR (5) appears before HR Executive of the Year (4).
     assert md.index("NAHR Fellow") < md.index("HR Executive of the Year"), "order"
     assert "How often:" in md and "Recent recipients" in md
+    assert "Typical recipient" in md and "Recent examples, and why they won" in md
     assert any(s.value == "Recognitions considered but not included" for s in at.subheader)
 
 
@@ -47,7 +48,11 @@ def test_pdf_brief_builds():
                                           for c in p["criteria"]])
          for p in programs.PROGRAMS],
         {"NAHR_FELLOW": ["Ola Snow (Cardinal Health, 2025)"]},
-        programs.EXCLUDED_RECOGNITIONS, (2025, 2026))
+        programs.EXCLUDED_RECOGNITIONS, (2025, 2026),
+        profiles={"NAHR_FELLOW": [("Median time in current role", "4.2 yrs", "5 of 6")]},
+        examples={"NAHR_FELLOW": [{"name": "A & B", "company": "X <Co>", "year": 2025,
+                                   "headline": "Did <this>", "what": "Details & more.",
+                                   "evidence": "award body writeup"}]})
     assert pdf[:5] == b"%PDF-" and len(pdf) > 5000, len(pdf)
 
 

@@ -912,24 +912,108 @@ def recent_recipients(events: list[dict], limit: int = 6) -> dict[str, list[str]
     return fmt
 
 
+def award_profiles(events: list[dict]) -> dict[str, dict]:
+    """Per program: metrics.recipient_profile over its recipients (approved data only)."""
+    rows_by_id = {r["executive_id"]: r for r in ALL_ROWS}
+    progs_by_exec: dict[str, set[str]] = defaultdict(set)
+    recipients: dict[str, set[str]] = defaultdict(set)
+    for e in events:
+        if e["status"] == "published":
+            progs_by_exec[e["executive_id"]].add(e["program_key"])
+            recipients[e["program_key"]].add(e["executive_id"])
+    out = {}
+    for key, xids in recipients.items():
+        people = []
+        for xid in xids:
+            roles = ROLES.get(xid, [])
+            current = next((r for r in roles if r["is_current"]), None)
+            cs = metrics.career_summary(roles) if roles else None
+            row = rows_by_id.get(xid, {})
+            if row.get("executive_type") not in (None, "practitioner"):
+                continue                         # academics are not CHRO profiles
+            people.append({
+                "tenure_years": round((_date.today() - current["start_date"]).days / 365.25, 1)
+                if current and current["start_date"] else None,
+                "years_as_chro": cs["years_as_chro"] if cs else None,
+                "chro_roles": cs["chro_roles"] if cs else None,
+                "hire_type": current["hire_type"] if current else None,
+                "other_awards": len(progs_by_exec[xid] - {key}),
+                "boards_on_record": len(BOARDS.get(xid, [])),
+                "non_hr": cs["has_non_hr_experience"] if cs else None,
+                "industry": row.get("Industry"),
+                "has_career": bool(roles),
+            })
+        out[key] = metrics.recipient_profile(people)
+    return out
+
+
+_EVIDENCE_RANK = {"award_body_writeup": 0, "independent_press": 1, "company_statement": 2,
+                  "self_reported": 3}
+
+
+def award_examples(events: list[dict], limit: int = 3) -> dict[str, list[dict]]:
+    """Per program: up to `limit` recent recipients with an APPROVED accomplishment tied to
+    that recognition, best evidence first."""
+    out: dict[str, list[dict]] = defaultdict(list)
+    for e in sorted(events, key=lambda e: (-e["recognition_year"], e["published_rank"] or 999,
+                                           e["canonical_name"])):
+        if e["status"] != "published" or len(out[e["program_key"]]) >= limit:
+            continue
+        accs = [a for a in ACCOMPLISHMENTS.get(e["executive_id"], [])
+                if a["event_id"] == e["event_id"]]
+        if not accs:
+            continue
+        a = min(accs, key=lambda a: _EVIDENCE_RANK.get(a["evidence_quality"], 9))
+        out[e["program_key"]].append({
+            "name": e["canonical_name"],
+            "company": metrics.clean_company(e["company_at_recognition"]) or "company not stated",
+            "year": e["recognition_year"], "headline": a["headline"],
+            "what": a["what_they_did"], "url": a["source_url"],
+            "evidence": (a["evidence_quality"] or "").replace("_", " ")})
+    return out
+
+
+def profile_lines(p: dict) -> list[tuple[str, str, str]]:
+    """(label, value, basis) rows for one award profile -- shared by screen and PDF."""
+    def v(stat, fmt):
+        return ("—" if stat["value"] is None else fmt.format(stat["value"]),
+                f"{stat['n']} of {p['recipients']}")
+    rows = [("Median time in current role", *v(p["tenure_years"], "{:g} yrs")),
+            ("Median years as CHRO (all roles)", *v(p["years_as_chro"], "{:g} yrs")),
+            ("Median number of CHRO roles", *v(p["chro_roles"], "{:g}")),
+            ("Promoted from within (current role)", *v(p["internal_hire_pct"], "{}%")),
+            ("Hold another recognition in this app", *v(p["other_awards_pct"], "{}%")),
+            ("Board seat on record", *v(p["boards_pct"], "{}%")),
+            ("Experience outside HR", *v(p["non_hr_pct"], "{}%"))]
+    if p["top_industries"]:
+        rows.append(("Most common industries",
+                     ", ".join(f"{i} ({n})" for i, n in p["top_industries"]),
+                     f"{p['recipients']} recipients"))
+    return rows
+
+
 with _T["criteria"]:
     import brief
     import programs as programs_src
     ORDERED = sorted(PROGRAMS, key=lambda p: (-float(p["analyst_weight"]),
                                               p["recognition_tier"], p["badge_label"]))
     RECENT = recent_recipients(EVENTS)
+    PROFILES = award_profiles(EVENTS)
+    EXAMPLES = award_examples(EVENTS)
+    PROFILE_TEXT = {k: profile_lines(v) for k, v in PROFILES.items()}
     top_l, top_r = st.columns([3, 1])
     top_l.caption("How each recognition is decided, in plain language, ordered by analyst "
                   "weight. Weights, tiers and source-quality ratings are ANALYST assessments, "
                   "not published by the award bodies.")
 
     @st.cache_data(ttl=600, show_spinner="Building the PDF brief…")
-    def _brief_pdf(_programs, recent, window) -> bytes:
+    def _brief_pdf(_programs, recent, window, profiles, examples) -> bytes:
         return brief.build_award_brief(_programs, recent, programs_src.EXCLUDED_RECOGNITIONS,
-                                       window)
+                                       window, profiles=profiles, examples=examples)
 
     top_r.download_button(
-        "Download award brief (PDF)", data=_brief_pdf(ORDERED, RECENT, WINDOW),
+        "Download award brief (PDF)",
+        data=_brief_pdf(ORDERED, RECENT, WINDOW, PROFILE_TEXT, dict(EXAMPLES)),
         file_name=f"CHRO_Recognition_Award_Brief_{_date.today():%Y-%m-%d}.pdf",
         mime="application/pdf", key="brief_pdf", type="primary", width="stretch")
 
@@ -970,6 +1054,35 @@ with _T["criteria"]:
             st.markdown("**Recent recipients** <span class='muted'>(in this dataset)</span>: "
                         + ("; ".join(recent) if recent else "none recorded yet"),
                         unsafe_allow_html=True)
+
+            prof = PROFILES.get(p["program_key"])
+            ex = EXAMPLES.get(p["program_key"], [])
+            pl, pr = st.columns([1, 1.25])
+            with pl:
+                st.markdown("**Typical recipient** <span class='muted'>(medians and shares "
+                            "across recipients in this app)</span>", unsafe_allow_html=True)
+                if prof and prof["recipients"]:
+                    st.dataframe(pd.DataFrame(PROFILE_TEXT[p["program_key"]],
+                                              columns=["Measure", "Typical", "Based on"]),
+                                 hide_index=True, width="stretch")
+                    st.caption("'Based on' counts recipients with that fact verified; career "
+                               "data fills in as roles are approved in Review. Board seats "
+                               "are those on record, not a confirmed absence.")
+                else:
+                    st.markdown("<span class='muted'>No recipients recorded yet.</span>",
+                                unsafe_allow_html=True)
+            with pr:
+                st.markdown("**Recent examples, and why they won**")
+                if not ex:
+                    st.markdown("<span class='muted'>None yet: examples appear once a "
+                                "recipient's accomplishments are approved in the Review "
+                                "tab.</span>", unsafe_allow_html=True)
+                for x in ex:
+                    st.markdown(f"**{x['name']}** ({x['company']}, {x['year']}): "
+                                f"*{x['headline']}*  \n{x['what']}  \n"
+                                f"<span class='muted'>Evidence: {x['evidence']} · "
+                                f"<a href='{x['url']}' target='_blank'>source</a></span>",
+                                unsafe_allow_html=True)
             flags = [lbl for k, lbl in (
                 ("peer_elected", "Peer-elected"), ("nomination_based", "Nomination-based"),
                 ("judging_panel", "Judging panel"), ("editorial_panel", "Editorial selection"),

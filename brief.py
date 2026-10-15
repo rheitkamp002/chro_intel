@@ -80,9 +80,15 @@ def _footer(canvas, doc) -> None:
 
 def build_award_brief(programs: list[dict], recipients: dict[str, list[str]],
                       excluded: list[tuple[str, str, str]], window: tuple[int, ...],
-                      as_of: date | None = None) -> bytes:
+                      as_of: date | None = None,
+                      profiles: dict[str, list[tuple[str, str, str]]] | None = None,
+                      examples: dict[str, list[dict]] | None = None) -> bytes:
     """programs: rows as the app loads them (with 'criteria' lists), ALREADY in display order.
-    recipients: program_key -> ['Name (Company, Year)', ...] most recent first."""
+    recipients: program_key -> ['Name (Company, Year)', ...] most recent first.
+    profiles: program_key -> [(measure, typical, based on), ...] (app.profile_lines).
+    examples: program_key -> [{name, company, year, headline, what, evidence}, ...]."""
+    profiles = profiles or {}
+    examples = examples or {}
     s = _styles()
     as_of = as_of or date.today()
     buf = io.BytesIO()
@@ -157,7 +163,34 @@ def build_award_brief(programs: list[dict], recipients: dict[str, list[str]],
                   _p(p["what_it_does_not_measure"], s["body"])]
         recent = recipients.get(p["program_key"], [])
         block += [_p("Recent recipients (in this dataset)", s["h3"]),
-                  _p("; ".join(recent) if recent else "None recorded yet.", s["body"]),
+                  _p("; ".join(recent) if recent else "None recorded yet.", s["body"])]
+        prof = profiles.get(p["program_key"])
+        if prof:
+            prow = [[_p(h, s["cellb"]) for h in ("Typical recipient", "Typical", "Based on")]]
+            prow += [[_p(a, s["cell"]), _p(b, s["cell"]), _p(c, s["cell"])]
+                     for a, b, c in prof]
+            pt = Table(prow, colWidths=[3.0 * inch, 2.5 * inch, 1.5 * inch])
+            pt.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, SHADE]),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.25, RULE),
+                ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]))
+            block += [Spacer(1, 4), pt,
+                      _p("'Based on' = recipients with that fact verified so far. Board "
+                         "seats are those on record, not a confirmed absence.", s["small"])]
+        ex = examples.get(p["program_key"], [])
+        block.append(_p("Recent examples, and why they won", s["h3"]))
+        if not ex:
+            block.append(_p("None yet: examples appear once recipients' accomplishments are "
+                            "approved.", s["body"]))
+        for x in ex:
+            block.append(Paragraph(
+                f"<b>{escape(x['name'])}</b> ({escape(x['company'])}, {x['year']}): "
+                f"<i>{escape(x['headline'])}</i>. {escape(x['what'])} "
+                f"<font color='#5b6475'>[evidence: {escape(x['evidence'])}]</font>",
+                s["body"]))
+        block += [
                   _p(f"Analyst weight {_w(p['analyst_weight'])} · tier "
                      f"{p['recognition_tier']} · source quality {p['source_quality']} "
                      f"(analyst) · nomination details verified "

@@ -204,6 +204,48 @@ def career_summary(roles: list[dict], today=None) -> dict:
     }
 
 
+def recipient_profile(people: list[dict]) -> dict:
+    """Pure. The 'typical recipient' of an award, from per-person facts.
+
+    people: one dict per recipient with keys (None = not known):
+      tenure_years, years_as_chro, chro_roles, hire_type, other_awards, boards_on_record,
+      non_hr, industry, has_career
+    Every statistic carries `n` -- how many recipients it rests on -- because career data
+    is incomplete and a median of 3 must not read like a median of 30.
+    """
+    from collections import Counter
+    from statistics import median
+
+    def med(key):
+        vals = [p[key] for p in people if p.get(key) is not None]
+        return {"value": round(median(vals), 1) if vals else None, "n": len(vals)}
+
+    def share(key, pred):
+        vals = [p[key] for p in people if p.get(key) is not None]
+        return {"value": round(100 * sum(1 for v in vals if pred(v)) / len(vals))
+                if vals else None, "n": len(vals)}
+
+    with_career = [p for p in people if p.get("has_career")]
+    inds = Counter(p["industry"] for p in people if p.get("industry")
+                   and p["industry"] != "Not classified")
+    return {
+        "recipients": len(people),
+        "tenure_years": med("tenure_years"),
+        "years_as_chro": med("years_as_chro"),
+        "chro_roles": med("chro_roles"),
+        "internal_hire_pct": share("hire_type", lambda v: v == "internal"),
+        "other_awards_pct": share("other_awards", lambda v: v > 0),
+        # Seats are only knowable for people whose career was researched; the share says
+        # "on record", never "holds none".
+        "boards_pct": {"value": round(100 * sum(1 for p in with_career
+                                                if (p.get("boards_on_record") or 0) > 0)
+                                      / len(with_career)) if with_career else None,
+                       "n": len(with_career)},
+        "non_hr_pct": share("non_hr", lambda v: bool(v)),
+        "top_industries": inds.most_common(3),
+    }
+
+
 def fmt_weight(x: float | int | None) -> str:
     """Pure. 5.0 -> '5', 2.5 -> '2.5', None -> '—'."""
     if x is None:
