@@ -13,6 +13,7 @@ from __future__ import annotations
 import hmac
 import os
 from collections import defaultdict
+from datetime import date as _date
 
 import pandas as pd
 import streamlit as st
@@ -305,14 +306,15 @@ PROG_BY_KEY = {p["program_key"]: p for p in PROGRAMS}
 ALL_ROWS = build_rows(EVENTS, WINDOW, False, ROLES, ACCOMPLISHMENTS)
 NAME_BY_ID = {r["executive_id"]: r["Executive"] for r in ALL_ROWS}
 
-_TABS = [("Overview", "overview"), ("Compare", "compare"), ("Peer sets", "peers"),
-         ("CHRO profile", "profile"), ("Award criteria", "criteria"), ("Review", "review"),
-         ("Data status", "status")]
+# Owner's order, 2026-10-15. Overview is hidden "for now" -- its code is kept below; add
+# ("Overview", "overview") back to this list to restore it.
+_TABS = [("Award criteria", "criteria"), ("Compare", "compare"), ("Peer sets", "peers"),
+         ("CHRO profile", "profile"), ("Data status", "status"), ("Review", "review")]
 _T = dict(zip([k for _, k in _TABS], st.tabs([lbl for lbl, _ in _TABS])))
 
 
-# ----- Overview
-with _T["overview"]:
+# ----- Overview (hidden; see _TABS)
+def _render_overview() -> None:
     st.info(CAVEAT)
     practitioners = [r for r in ALL_ROWS if r["executive_type"] == "practitioner"]
     recognized = [r for r in practitioners if r["Strength"] > 0]
@@ -362,6 +364,11 @@ with _T["overview"]:
                           xaxis=dict(dtick=1, title="Breadth (distinct organizations)"),
                           yaxis=dict(title="Strength (max weight)"))
         st.plotly_chart(fig, width="stretch")
+
+
+if "overview" in _T:
+    with _T["overview"]:
+        _render_overview()
 
 
 # ----- Compare
@@ -719,6 +726,15 @@ with _T["profile"]:
         roles = ROLES.get(xid, [])
         if not roles:
             st.write("Not yet researched.")
+        if current:
+            t = st.columns(2)
+            t[0].metric("Time in current role", _tenure(current["start_date"]).split(" (")[0],
+                        help="From the verified start date"
+                             + (f" (precision: {current['start_precision']})"
+                                if current.get("start_precision") else "") + ".")
+            t[1].metric("Hired", (current["hire_type"] or "not stated").capitalize(),
+                        help="Internal = promoted from within; external = joined to take "
+                             "the role.")
         for r in roles:
             span = f"{r['start_date'] or '?'} – {r['end_date'] or ('present' if r['is_current'] else '?')}"
             st.markdown(f"**{r['title']}**, {r['company_name_stated']}  \n"
@@ -739,19 +755,58 @@ with _T["profile"]:
 
 
 # ----- Award criteria
+def recent_recipients(events: list[dict], limit: int = 6) -> dict[str, list[str]]:
+    """Per program: 'Name (Company, Year …)', most recent first, then by rank."""
+    out: dict[str, list[dict]] = defaultdict(list)
+    for e in events:
+        if e["status"] == "published":
+            out[e["program_key"]].append(e)
+    fmt = {}
+    for key, evs in out.items():
+        evs.sort(key=lambda e: (-e["recognition_year"], e["published_rank"] or 999,
+                                e["canonical_name"]))
+        fmt[key] = [
+            f"{e['canonical_name']} ({metrics.clean_company(e['company_at_recognition']) or 'company not stated'}, "
+            f"{e['recognition_year']}"
+            + (f", #{e['published_rank']}" if e["published_rank"]
+               else f", {e['category']}" if e["category"] and e["category"] not in
+               ("Winner", "Finalist", "Leader of Distinction") and not
+               e["category"].startswith("Class of") else "") + ")"
+            for e in evs[:limit]]
+    return fmt
+
+
 with _T["criteria"]:
-    st.caption("How each recognition is decided, in plain language. Weights, tiers and "
-               "source-quality ratings are ANALYST assessments, not published by the award "
-               "bodies.")
+    import brief
+    import programs as programs_src
+    ORDERED = sorted(PROGRAMS, key=lambda p: (-float(p["analyst_weight"]),
+                                              p["recognition_tier"], p["badge_label"]))
+    RECENT = recent_recipients(EVENTS)
+    top_l, top_r = st.columns([3, 1])
+    top_l.caption("How each recognition is decided, in plain language, ordered by analyst "
+                  "weight. Weights, tiers and source-quality ratings are ANALYST assessments, "
+                  "not published by the award bodies.")
+
+    @st.cache_data(ttl=600, show_spinner="Building the PDF brief…")
+    def _brief_pdf(_programs, recent, window) -> bytes:
+        return brief.build_award_brief(_programs, recent, programs_src.EXCLUDED_RECOGNITIONS,
+                                       window)
+
+    top_r.download_button(
+        "Download award brief (PDF)", data=_brief_pdf(ORDERED, RECENT, WINDOW),
+        file_name=f"CHRO_Recognition_Award_Brief_{_date.today():%Y-%m-%d}.pdf",
+        mime="application/pdf", key="brief_pdf", type="primary", width="stretch")
+
     recipients = defaultdict(lambda: defaultdict(int))
     for e in EVENTS:
         recipients[e["program_key"]][e["recognition_year"]] += 1
-    for p in PROGRAMS:
+    for p in ORDERED:
         with st.container(border=True):
             st.markdown(badge(p["badge_label"], p["recognition_tier"])
                         + f" <b>{p['organization']}</b> · {p['recognition_name']}",
                         unsafe_allow_html=True)
             st.write(p["criteria_summary"])
+            st.markdown(f"**How often:** {p.get('award_frequency') or 'Not stated'}")
             a, b, c = st.columns(3)
             a.markdown(f"**Who is eligible**  \n{p['eligibility'] or 'Not stated'}")
             b.markdown(f"**Who nominates**  \n{p['nominated_by'] or 'Not stated'}")
@@ -763,6 +818,10 @@ with _T["criteria"]:
                                 + (f" — {cr['description']}" if cr["description"] else "")
                                 + "</p>", unsafe_allow_html=True)
             st.markdown(f"**What it does not measure:** {p['what_it_does_not_measure']}")
+            recent = RECENT.get(p["program_key"], [])
+            st.markdown("**Recent recipients** <span class='muted'>(in this dataset)</span>: "
+                        + ("; ".join(recent) if recent else "none recorded yet"),
+                        unsafe_allow_html=True)
             flags = [lbl for k, lbl in (
                 ("peer_elected", "Peer-elected"), ("nomination_based", "Nomination-based"),
                 ("judging_panel", "Judging panel"), ("editorial_panel", "Editorial selection"),
@@ -790,6 +849,13 @@ with _T["criteria"]:
                     f"{c['category']} {metrics.fmt_weight(float(c['analyst_weight']))}"
                     + (" (standing)" if c["is_standing_honor"] else "")
                     for c in p["categories"]))
+
+    st.subheader("Recognitions considered but not included")
+    st.caption("Analyst assessment. These exist, but each measures something other than an "
+               "individual CHRO's selective external recognition, so none is scored here.")
+    st.dataframe(pd.DataFrame(programs_src.EXCLUDED_RECOGNITIONS,
+                              columns=["Group", "Examples", "Why not included"]),
+                 hide_index=True, width="stretch")
 
 
 # ----- Data status

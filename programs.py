@@ -33,9 +33,10 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": True,
         "analyst_weight": 5,
         "source_quality": "Very High",
+        "award_frequency": "Annually: a new class of Fellows is elected each year",
         "criteria_summary": (
-            "A career honor, not an annual prize. Existing Fellows -- senior HR leaders and "
-            "scholars -- elect new Fellows after a multi-stage peer review. They look for "
+            "A career honor, not an annual prize. Existing Fellows (senior HR leaders and "
+            "scholars) elect new Fellows after a multi-stage peer review. They look for "
             "sustained, nationally recognized achievement: impact on the candidate's own "
             "organization, on the HR profession, and on society, including shaping HR "
             "thinking or policy."),
@@ -83,6 +84,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 4,
         "source_quality": "High",
+        "award_frequency": "Annually: one HR Executive of the Year",
         "criteria_summary": (
             "One winner a year. Open only to an organization's top HR executive who runs the "
             "whole HR function, has held the role at least three years, works for an employer "
@@ -130,6 +132,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 2.5,
         "source_quality": "High",
+        "award_frequency": "Annually, alongside HR Executive of the Year",
         "criteria_summary": (
             "Honorees recognized alongside the HR Executive of the Year, judged on the "
             "same criteria. Secondary to the annual winner."),
@@ -159,6 +162,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 4,
         "source_quality": "High",
+        "award_frequency": "Annually: one winner in each category (about six per year)",
         "criteria_summary": (
             "Winners named in several categories each year (large, mid and small market, "
             "non-profit, sustainable workforce, lifetime achievement). Judged on outcomes, "
@@ -214,6 +218,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 2,
         "source_quality": "High",
+        "award_frequency": "Annually: finalists named before the category winners",
         "criteria_summary": "Finalists for HRO Today CHRO of the Year, judged on the same "
                             "criteria. Finalist-level recognition.",
         "eligibility": "As CHRO of the Year.",
@@ -242,6 +247,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 3,
         "source_quality": "Moderate-High",
+        "award_frequency": "Annually: a ranked list of 40",
         "criteria_summary": (
             "A ranked list of 40 people leaders chosen by a panel of academic and industry "
             "experts. Assessed on organizational design and change, leadership development, "
@@ -285,6 +291,7 @@ PROGRAMS: list[dict] = [
         "is_standing_honor": False,
         "analyst_weight": 1,
         "source_quality": "Moderate",
+        "award_frequency": "Annually, alongside Leaders40",
         "criteria_summary": "A broader list published alongside Leaders40. Not equivalent to "
                             "Leaders40; shown as a signal only.",
         "eligibility": "As Leaders40.",
@@ -325,3 +332,37 @@ WORKBOOK_PROGRAM_MAP: dict[tuple[str, str], str] = {
     ("HRO Today", "Leader of Distinction"): "HRO_LOD",
     ("N2Growth", "Leaders40 Top CHRO"): "N2_L40",
 }
+
+# Recognitions that exist but are NOT scored here, and why. ANALYST ASSESSMENT 2026-10-15,
+# grouped by the reason for exclusion (spec sections 27-28: memberships, speaking and
+# company-level honors are different signals and must not be weighted like awards).
+# Shown at the bottom of the Award criteria tab and in the PDF brief.
+EXCLUDED_RECOGNITIONS: list[tuple[str, str, str]] = [
+    # (group, examples, why not included)
+    ("Employer / company-level lists",
+     "Fortune 100 Best Companies to Work For (Great Place to Work), Gallup Exceptional "
+     "Workplace Award, LinkedIn Top Companies",
+     "They recognize the organization, not the CHRO personally. They are worth tracking later "
+     "as a separate company signal, not counted as a CHRO award."),
+    ("HR program and practice awards",
+     "Brandon Hall Group HCM Excellence Awards, ATD BEST Awards",
+     "They honor a specific program or team, often entered by vendors or teams. They are hard "
+     "to attribute to the top HR executive."),
+    ("Emerging-leader and HR-technology lists",
+     "HR Executive's HR's Rising Awards and Top 100 HR Tech Influencers",
+     "They target early-career professionals or HR-technology influence, a different "
+     "population from enterprise CHROs."),
+    ("Memberships and leadership roles",
+     "CHRO Association, HR Policy Association, The Conference Board HR councils, "
+     "association board seats",
+     "Membership or service, not a selective external judgement. The spec says to track these "
+     "later as a separate influence signal, never as awards."),
+    ("Media 'influencer' lists",
+     "Assorted publication and social-media influencer rankings",
+     "Selection is usually editorial and driven by visibility, with little published method, "
+     "so they mostly measure media presence."),
+    ("Candidate sources not yet assessed",
+     "SHRM, WorldatWork, Business Group on Health, ATD individual honors",
+     "Named in the spec as possible additions. Each needs its method reviewed before it can "
+     "be given a weight."),
+]

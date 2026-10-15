@@ -8,3 +8,4 @@ streamlit>=1.40
 plotly>=5.24
 pandas>=2.2
 openpyxl>=3.1                 # reads the seed workbook (run.py seed)
+reportlab>=4.0                # the downloadable PDF award brief

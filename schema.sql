@@ -144,6 +144,8 @@ create table if not exists recognition_program (
   refreshed_at                   timestamptz not null default now()
 );
 
+alter table recognition_program add column if not exists award_frequency text;
+
 create table if not exists program_category (
   program_id         uuid not null references recognition_program(program_id) on delete cascade,
   category           text not null,

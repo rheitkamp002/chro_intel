@@ -26,16 +26,29 @@ def _app() -> AppTest:
 
 def test_renders_all_tabs():
     at = _app()
-    assert len(at.tabs) == 7
+    assert len(at.tabs) == 6
     assert at.title[0].value == "CHRO External Recognition"
     assert not at.error, [e.value for e in at.error]
 
 
-def test_overview_counts_multi_source_leaders():
+def test_award_criteria_order_brief_and_exclusions():
     at = _app()
-    labels = {m.label: m.value for m in at.metric}
-    # Workbook facts: Breitfelder, Ola Snow, Donna Morris are each recognized by 2 orgs.
-    assert int(labels["Recognized by 2+ organizations"]) >= 3, labels
+    md = " ".join(m.value for m in at.markdown)
+    # Ordered by weight: NAHR (5) appears before HR Executive of the Year (4).
+    assert md.index("NAHR Fellow") < md.index("HR Executive of the Year"), "order"
+    assert "How often:" in md and "Recent recipients" in md
+    assert any(s.value == "Recognitions considered but not included" for s in at.subheader)
+
+
+def test_pdf_brief_builds():
+    import brief, programs
+    pdf = brief.build_award_brief(
+        [dict(p, program_id="x", criteria=[{"label": c[1], "description": c[2]}
+                                          for c in p["criteria"]])
+         for p in programs.PROGRAMS],
+        {"NAHR_FELLOW": ["Ola Snow (Cardinal Health, 2025)"]},
+        programs.EXCLUDED_RECOGNITIONS, (2025, 2026))
+    assert pdf[:5] == b"%PDF-" and len(pdf) > 5000, len(pdf)
 
 
 def test_profiles_render_for_varied_executives():
@@ -89,7 +102,7 @@ def test_password_gate_blocks_until_correct():
         assert at.error and len(at.tabs) == 0
         at.text_input(key="pw").input("test-pw")
         at.run()
-        assert not at.exception and len(at.tabs) == 7
+        assert not at.exception and len(at.tabs) == 6
     finally:
         os.environ.pop("APP_PASSWORD", None)
 

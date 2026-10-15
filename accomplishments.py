@@ -116,6 +116,11 @@ def run() -> None:
                                    values (%s, %s) on conflict (event_id) do update
                                    set note = excluded.note, searched_at = current_date""",
                                 (g["event_id"], g["note"]))
+            # A later pass (e.g. a retry) may have found something: a gap only stands for an
+            # event with no live accomplishment, whichever file recorded it.
+            cur.execute("""delete from accomplishment_gap where event_id in (
+                               select event_id from accomplishment
+                               where event_id is not null and review_status <> 'rejected')""")
     print(f"Accomplishments: {added} drafts added, {skipped} already present, "
           f"{rejected} skipped for validation problems (listed above)")
     print(f"Research gaps (no substantive source found): {len(gaps)}")
