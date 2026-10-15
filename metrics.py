@@ -19,21 +19,43 @@ import unicodedata
 from typing import Iterable
 
 _HONORIFICS = ("dr", "mr", "mrs", "ms", "prof")
+_SUFFIXES = ("jr", "sr", "ii", "iii", "iv", "phd", "md")
 
 
 def name_key(name: str | None) -> str:
     """Pure. Normalized person name for duplicate detection. Never used ALONE to merge."""
+    return name_keys(name)[0]
+
+
+def name_keys(name: str | None) -> tuple[str, str | None]:
+    """Pure. (formal key, parenthetical-variant key or None).
+
+    "Christine M. (Christy) Pambianchi" -> ("christine pambianchi", "christy pambianchi").
+    The parenthesis may hold a nickname (Christy) OR a former surname ("Darcie (Henry)
+    Cakaric"), so it is never trusted alone: duplicate detection matches on EITHER key and
+    a person decides. MEASURED 2026-10-15: the Pambianchi pair had been split in two.
+    """
     s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
+    nick = re.search(r"\(([^)]+)\)", s)
+    s = re.sub(r"\([^)]*\)", " ", s)
     # Apostrophes join, not split: "O'Gorman" must not leave an "o" that reads as an initial.
     s = re.sub(r"['’]", "", s.lower())
     s = re.sub(r"[^\w\s-]", " ", s)
     parts = [p for p in re.split(r"[\s-]+", s) if p]
     while parts and parts[0] in _HONORIFICS:
         parts = parts[1:]
+    while len(parts) > 2 and parts[-1] in _SUFFIXES:
+        parts = parts[:-1]
     # Drop single-letter middle initials: "Daniel G. Chappell" == "Daniel Chappell".
     if len(parts) > 2:
         parts = [parts[0]] + [p for p in parts[1:-1] if len(p) > 1] + [parts[-1]]
-    return " ".join(parts)
+    formal = " ".join(parts)
+    alt = None
+    if nick and parts:
+        n = re.sub(r"[^a-z]", "", nick.group(1).lower())
+        if len(n) > 1:
+            alt = " ".join([n] + parts[1:])
+    return formal, alt if alt != formal else None
 
 
 def clean_company(name: str | None) -> str | None:

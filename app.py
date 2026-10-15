@@ -291,6 +291,7 @@ def build_rows(events: list[dict], window: tuple[int, ...], include_secondary: b
             "Yrs as CHRO": cs["years_as_chro"],
             "Non-HR experience": ("—" if cs["has_non_hr_experience"] is None else
                                   ", ".join(cs["non_hr_functions"]) or "None found"),
+            # A count of seats ON RECORD -- 0 means none recorded, not "holds none".
             "Boards (current)": sum(1 for b in BOARDS.get(xid, []) if b["is_current"]),
             "orgs": {e["organization_short"] for e in evs},
             "types": {e["recognition_type"] for e in evs},
@@ -748,7 +749,10 @@ def render_career(xid: str, current: dict | None) -> None:
     st.markdown("**Board seats** <span class='muted'>(an influence signal — not scored)"
                 "</span>", unsafe_allow_html=True)
     if not seats:
-        st.markdown("<span class='muted'>None found.</span>", unsafe_allow_html=True)
+        # Research recorded seats it found; it did NOT confirm absence. Never say "none".
+        st.markdown("<span class='muted'>None recorded. Board seats were not checked "
+                    "exhaustively, so this does not confirm the person holds none.</span>",
+                    unsafe_allow_html=True)
     for s_ in seats:
         when = (f"{s_['start_year'] or '?'}–{'present' if s_['is_current'] else (s_['end_year'] or '?')}")
         st.markdown(f"• **{s_['organization']}** — {s_['seat_role'] or 'Board member'} "

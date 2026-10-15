@@ -71,6 +71,8 @@ create table if not exists executive (
   refreshed_at     timestamptz not null default now()
 );
 create index if not exists ix_executive_name_key on executive (name_key);
+-- 2026-10-15: variant key from a parenthetical ("Christine (Christy) X" -> "christy x").
+alter table executive add column if not exists alt_name_key text;
 
 -- Career & tenure: one row per role held. The current role is the row with is_current.
 create table if not exists executive_role (

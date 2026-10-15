@@ -33,6 +33,17 @@ def test_name_key_strips_honorific_and_initial():
     assert metrics.name_key("Jim O’Gorman") == metrics.name_key("Jim O'Gorman")
 
 
+def test_name_key_uses_nickname_and_drops_suffix():
+    assert metrics.name_keys("Christine M. (Christy) Pambianchi") == (
+        "christine pambianchi", "christy pambianchi")
+    assert metrics.name_keys("William L. (Bill) Clawson II") == ("william clawson",
+                                                                 "bill clawson")
+    # A parenthetical former surname yields a variant too -- matched only for REVIEW.
+    assert metrics.name_keys("Darcie (Henry) Cakaric")[0] == "darcie cakaric"
+    assert metrics.name_keys("Demetris D. (D) Crum") == ("demetris crum", None)
+    assert metrics.name_keys("Ryan R. Craig") == ("ryan craig", None)
+
+
 def test_name_key_keeps_hyphenated_surnames_distinct_from_first_names():
     assert metrics.name_key("Kristi Cappelletti-Matthews") == "kristi cappelletti matthews"
 
@@ -174,6 +185,16 @@ def test_validate_rejects_off_vocabulary_and_foreign_criteria():
 def test_validate_rejects_unknown_event_and_missing_source():
     assert accomplishments.validate(_item(event_id="zz"), _EVS, _CRIT)
     assert accomplishments.validate(_item(source_url=""), _EVS, _CRIT)
+
+
+def test_group_duplicates_matches_either_key():
+    import review
+    rows = [{"name_key": "christy pambianchi", "alt_name_key": None, "canonical_name": "a"},
+            {"name_key": "christine pambianchi", "alt_name_key": "christy pambianchi",
+             "canonical_name": "b"},
+            {"name_key": "someone else", "alt_name_key": None, "canonical_name": "c"}]
+    g = review.group_duplicates(rows)
+    assert len(g) == 1 and len(next(iter(g.values()))) == 2
 
 
 # ----- career -----

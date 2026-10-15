@@ -240,9 +240,10 @@ def _seed_executives(conn, rows: list[dict]) -> dict[int, str]:
         academic = any(_ACADEMIC.search(r["title"] or "") for r in group)
         with conn.cursor() as cur:
             cur.execute(
-                "insert into executive (canonical_name, name_key, alternate_names, "
-                "executive_type) values (%s, %s, %s, %s) returning executive_id::text",
-                (name, metrics.name_key(name), alts,
+                "insert into executive (canonical_name, name_key, alt_name_key, "
+                "alternate_names, executive_type) values (%s, %s, %s, %s, %s) "
+                "returning executive_id::text",
+                (name, *metrics.name_keys(name), alts,
                  "academic" if academic else "practitioner"))
             resolved[ident] = cur.fetchone()[0]
         created += 1

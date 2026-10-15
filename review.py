@@ -26,21 +26,50 @@ def draft_roles() -> list[dict]:
             order by r.is_current desc, c.fortune_rank nulls last, x.canonical_name""")
 
 
+def group_duplicates(rows: list[dict]) -> dict[str, list[dict]]:
+    """Pure. Group executives whose name_key OR alt_name_key coincide (any pairing).
+
+    Returns {group key: [rows]} for groups of 2+. Grouping is transitive (union-find).
+    """
+    parent = list(range(len(rows)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    first_with: dict[str, int] = {}
+    for i, r in enumerate(rows):
+        for k in (r.get("name_key"), r.get("alt_name_key")):
+            if not k:
+                continue
+            if k in first_with:
+                parent[find(i)] = find(first_with[k])
+            else:
+                first_with[k] = i
+    groups: dict[int, list[dict]] = {}
+    for i, r in enumerate(rows):
+        groups.setdefault(find(i), []).append(r)
+    return {min(g, key=lambda r: r["name_key"])["name_key"]: g
+            for g in groups.values() if len(g) > 1}
+
+
 def possible_duplicates() -> list[dict]:
-    """Executives sharing a normalized name, with the employers each is known by."""
+    """Executives who may be the same person (matching name keys), with their employers."""
     with connect() as conn:
-        return fetch_all(conn, """
-            select x.name_key, x.executive_id::text as executive_id, x.canonical_name,
-                   coalesce(string_agg(distinct coalesce(e.company_at_recognition,
-                                                         r.company_name_stated), ', '), '')
-                     as companies
-            from executive x
-            left join recognition_event e using (executive_id)
-            left join executive_role r using (executive_id)
-            where x.name_key in (select name_key from executive
-                                 group by name_key having count(*) > 1)
-            group by x.name_key, x.executive_id, x.canonical_name
-            order by x.name_key, x.canonical_name""")
+        rows = fetch_all(conn, """
+            select x.name_key, x.alt_name_key, x.executive_id::text as executive_id,
+                   x.canonical_name,
+                   coalesce((select string_agg(distinct c, ', ') from (
+                       select e.company_at_recognition as c from recognition_event e
+                       where e.executive_id = x.executive_id
+                       union select r.company_name_stated from executive_role r
+                       where r.executive_id = x.executive_id) s), '') as companies
+            from executive x""")
+    out = []
+    for key, group in sorted(group_duplicates(rows).items()):
+        out += [{**r, "name_key": key} for r in sorted(group, key=lambda r: r["canonical_name"])]
+    return out
 
 
 def merge_executives(keep_id: str, drop_id: str) -> None:

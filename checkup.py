@@ -33,13 +33,14 @@ def run() -> None:
             n = fetch_all(conn, f"select count(*) as n from {t}")[0]["n"]
             print(f"     {t:<26} {n:>6}")
 
-        dupes = fetch_all(conn, """
-            select name_key, array_agg(canonical_name) as names, count(*) as n
-            from executive group by name_key having count(*) > 1""")
-        print(f"3. Possible duplicate executives (same name, different employer): {len(dupes)}")
-        for d in dupes:
-            print(f"     {d['names']} -- decide: same person or not")
-        findings += len(dupes)
+        import review
+        groups: dict[str, list[str]] = {}
+        for d in review.possible_duplicates():
+            groups.setdefault(d["name_key"], []).append(d["canonical_name"])
+        print(f"3. Possible duplicate executives (matching name keys): {len(groups)}")
+        for names in groups.values():
+            print(f"     {names} -- decide in the Review tab: same person or not")
+        findings += len(groups)
 
         unclassified = fetch_all(conn, "select name from company where industry is null "
                                        "order by name")

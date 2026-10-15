@@ -225,8 +225,9 @@ def _roles(conn, chros: list[dict], comp: dict) -> None:
         match = next((p for p in people if p["name_key"] == nk and cid in p["company_ids"]), None)
         if match is None:
             with conn.cursor() as cur:
-                cur.execute("insert into executive (canonical_name, name_key) values (%s, %s) "
-                            "returning executive_id::text", (c["chro_name"], nk))
+                cur.execute("insert into executive (canonical_name, name_key, alt_name_key) "
+                            "values (%s, %s, %s) returning executive_id::text",
+                            (c["chro_name"], nk, metrics.name_keys(c["chro_name"])[1]))
                 xid = cur.fetchone()[0]
             people.append({"executive_id": xid, "name_key": nk, "company_ids": [cid]})
             created_x += 1
