@@ -1,0 +1,10 @@
+# CHRO External Recognition app. Same base stack as the S&P 200 App, minus nothing yet:
+#   beautifulsoup4 is kept for the research steps that read award-source pages.
+psycopg[binary]>=3.1
+requests>=2.31
+python-dotenv>=1.0
+beautifulsoup4>=4.12
+streamlit>=1.40
+plotly>=5.24
+pandas>=2.2
+openpyxl>=3.1                 # reads the seed workbook (run.py seed)

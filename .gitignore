@@ -1,0 +1,19 @@
+# Secrets — never commit these
+.env
+
+# Python virtual environment
+.venv/
+
+# Python caches / compiled files
+__pycache__/
+*.pyc
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+Thumbs.db
+
+# Office lock files (`~$name.ext` appears while a document is OPEN)
+~$*
+
+.cache/
