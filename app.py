@@ -929,8 +929,20 @@ with _T["criteria"]:
             st.markdown(f"**How often:** {p.get('award_frequency') or 'Not stated'}")
             a, b, c = st.columns(3)
             a.markdown(f"**Who is eligible**  \n{p['eligibility'] or 'Not stated'}")
-            b.markdown(f"**Who nominates**  \n{p['nominated_by'] or 'Not stated'}")
+            b.markdown(f"**Who can nominate**  \n{p['nominated_by'] or 'Not stated'}")
             c.markdown(f"**Who decides**  \n{p['judged_by'] or 'Not stated'}")
+            with st.expander("How nomination works"):
+                self_nom = p.get("self_nomination_allowed")
+                st.markdown(
+                    f"**What a nomination requires:** {p.get('nomination_requirements') or 'Not stated'}  \n"
+                    f"**Timing:** {p.get('nomination_timing') or 'Not stated'}  \n"
+                    f"**Entry fee:** {p.get('entry_fee') or 'Not stated'}  \n"
+                    "**Self-nomination:** "
+                    + ("allowed" if self_nom is True else "not allowed" if self_nom is False
+                       else "not addressed by the award body")
+                    + (f"  \n<span class='muted'>Verified {p['last_verified']} from the "
+                       "award body's own pages.</span>" if p.get("last_verified") else ""),
+                    unsafe_allow_html=True)
             if p["criteria"]:
                 st.markdown("**Published criteria**")
                 for cr in p["criteria"]:

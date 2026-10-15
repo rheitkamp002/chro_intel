@@ -138,10 +138,16 @@ def build_award_brief(programs: list[dict], recipients: dict[str, list[str]],
         ]
         block = [
             _p("How often", s["h3"]), _p(p.get("award_frequency"), s["body"]),
-            _p("Who is eligible · who nominates · who decides", s["h3"]),
-            _p(f"{p['eligibility'] or 'Not stated'} Nominated by: "
-               f"{p['nominated_by'] or 'not stated'} Decided by: "
-               f"{p['judged_by'] or 'not stated'}", s["body"]),
+            _p("Who is eligible", s["h3"]), _p(p["eligibility"] or "Not stated", s["body"]),
+            _p("Who can nominate", s["h3"]), _p(p["nominated_by"] or "Not stated", s["body"]),
+            _p("Who decides", s["h3"]), _p(p["judged_by"] or "Not stated", s["body"]),
+            _p("What a nomination requires · timing · fee", s["h3"]),
+            _p(f"{p.get('nomination_requirements') or 'Not stated.'} Timing: "
+               f"{(p.get('nomination_timing') or 'not stated').rstrip('.')}. Entry fee: "
+               f"{(p.get('entry_fee') or 'not stated').rstrip('.')}. Self-nomination: "
+               + ("allowed." if p.get("self_nomination_allowed") is True else
+                  "not allowed." if p.get("self_nomination_allowed") is False else
+                  "not addressed by the award body."), s["body"]),
         ]
         if p["criteria"]:
             block.append(_p("Published criteria", s["h3"]))
@@ -154,7 +160,9 @@ def build_award_brief(programs: list[dict], recipients: dict[str, list[str]],
                   _p("; ".join(recent) if recent else "None recorded yet.", s["body"]),
                   _p(f"Analyst weight {_w(p['analyst_weight'])} · tier "
                      f"{p['recognition_tier']} · source quality {p['source_quality']} "
-                     f"(analyst) · source: {p['source_url']}", s["small"]),
+                     f"(analyst) · nomination details verified "
+                     f"{p.get('last_verified') or 'not yet'} · source: {p['source_url']}",
+                     s["small"]),
                   Spacer(1, 8)]
         story.append(KeepTogether(head_block))
         story += block

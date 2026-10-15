@@ -366,3 +366,137 @@ EXCLUDED_RECOGNITIONS: list[tuple[str, str, str]] = [
      "Named in the spec as possible additions. Each needs its method reviewed before it can "
      "be given a weight."),
 ]
+
+# How nomination works -- VERIFIED 2026-10-15 from each award body's own pages
+# (../research/nomination_rules.json holds sources and quotes). Merged into PROGRAMS below,
+# so every program carries the same keys. None = the source does not say.
+_NOMINATION: dict[str, dict] = {
+    "NAHR_FELLOW": {
+        "nominated_by": "Existing NAHR Fellows only. Fellows identify and nominate candidates "
+                        "through a Fellows-only page; there is no public or self-nomination "
+                        "route.",
+        "judged_by": "Multi-layer peer review: candidate reviewers chosen by the Academy "
+                     "President support the Board, the Board recommends candidates, and the "
+                     "Fellows vote to elect them.",
+        "nomination_requirements": (
+            "Not published (materials are Fellows-only). Public criteria: leadership and "
+            "impact, scope of role and recognition, competencies comparable to current "
+            "Fellows, external influence (associations, civic work, public policy), knowledge "
+            "development, character and integrity."),
+        "nomination_timing": "Nomination window not public. New Fellows are inducted each "
+                             "November (2026 induction: Nov 12, 2026).",
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+    "HRE_EOY": {
+        "criteria_summary": (
+            "One winner a year, for organizations with more than 10,000 employees (mid-size "
+            "organizations compete for HR Leader of Distinction). Open only to the top HR "
+            "executive running the whole HR function, at least three years in the role, with "
+            "a CEO recommendation. Judged on strategic contribution to the business, "
+            "innovation and transformation, and contribution to the HR profession."),
+        "eligibility": ("The organization's highest-ranking HR leader, with the full span of "
+                        "HR including compensation; at least 3 years in the current role and "
+                        "5+ years in HR. HR Executive of the Year is for organizations with "
+                        "more than 10,000 employees (500-10,000 compete for HR Leader of "
+                        "Distinction)."),
+        "nominated_by": ("A company official of the nominee's own organization submits it, "
+                         "and a letter of recommendation from the CEO is required. Outsiders "
+                         "cannot nominate. In practice the nominee's own team often prepares "
+                         "the entry; self-nomination is not addressed."),
+        "judged_by": "HR Executive editorial staff, with outside judges.",
+        "nomination_requirements": (
+            "Online portal only: five data-backed essays (a major problem handled in the past "
+            "2-3 years; innovative programs and measured results; how HR supports business "
+            "objectives; leadership within HR; contributions to the profession), CEO letter, "
+            "resume and headshot; optional supporting PDF."),
+        "nomination_timing": ("2026 cycle: deadline June 12; selected people notified in "
+                              "August; winner announced Sept 9 and honored at HR Tech in "
+                              "October."),
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+    "HRE_LOD": {
+        "recognition_type": "Industry award (mid-size organizations)",
+        "badge_label": "HR Leader of Distinction",
+        "criteria_summary": (
+            "HR Executive's award for the top HR leader at a MID-SIZE organization (500 to "
+            "10,000 employees), judged on the same criteria as HR Executive of the Year, which "
+            "is for organizations above 10,000. It is a size category, not a finalist list."),
+        "eligibility": ("The highest-ranking HR leader at an organization with 500-10,000 "
+                        "employees; at least 3 years in role and 5+ years in HR."),
+        "nominated_by": ("As HR Executive of the Year: a company official of the nominee's "
+                         "organization submits it, with a required CEO letter."),
+        "judged_by": "HR Executive editorial staff, with outside judges.",
+        "selection_process": ("Same process and criteria as HR Executive of the Year, for "
+                              "mid-size organizations."),
+        "what_it_does_not_measure": ("Leaders at organizations above 10,000 employees (they "
+                                     "compete for HR Executive of the Year)."),
+        "nomination_requirements": "As HR Executive of the Year.",
+        "nomination_timing": "As HR Executive of the Year (2026 honoree announced Sept 9).",
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+    "HRO_COY": {
+        "nominated_by": ("Anyone, typically a colleague or someone at the nominee's company "
+                         "(\"Nominate your CHRO or a colleague\"). Vendors cannot nominate "
+                         "directly; they must have the client's team submit. The nominee "
+                         "must be told of the nomination. Self-nomination is not addressed."),
+        "judged_by": ("HRO Today's editorial board reviews nominees; a judging panel of "
+                      "previous winners scores them; finalists are named Leaders of "
+                      "Distinction and winners are revealed at the awards gala."),
+        "nomination_requirements": (
+            "Online form: a narrative of the key initiative(s) the nominee led, quantified "
+            "impact (people affected, profit or cost impact), a 1-10 rating of how far the "
+            "nominee personally drove it, CHRO tenure, bio and headshot. Finalists must "
+            "attend the gala."),
+        "nomination_timing": ("2027 cycle: opened Sept 1, 2026, closes Dec 11, 2026; "
+                              "finalists contacted March 2027; winners announced "
+                              "May 13, 2027."),
+        "entry_fee": "None stated",
+        "what_it_does_not_measure": (
+            "Comparability across categories: a small-market winner competes in a very "
+            "different field from a large-market winner, which is why weights vary by "
+            "category here. Finalists must attend the gala, which can exclude some leaders."),
+        "last_verified": "2026-10-15",
+    },
+    "HRO_LOD": {
+        "nominated_by": ("As CHRO of the Year: anyone, typically a colleague; vendors must "
+                         "have the client's team submit."),
+        "judged_by": "HRO Today editorial board and a panel of previous winners.",
+        "nomination_requirements": "As CHRO of the Year.",
+        "nomination_timing": ("Leaders of Distinction are announced about a month before the "
+                              "winners (April for the North America cycle)."),
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+    "N2_L40": {
+        "nominated_by": ("Anyone, by emailing N2Growth (topchrolist@n2growth.com) or using "
+                         "its contact page. There is no form, deadline or stated restriction; "
+                         "self-nomination is not addressed."),
+        "judged_by": ("A panel of academic and industry experts led by N2Growth's chairman "
+                      "(the list launched with Stanford GSB in 2020). N2Growth is an "
+                      "executive search firm; whether its own research feeds selection is "
+                      "not stated."),
+        "nomination_requirements": "None published: an informal email nomination.",
+        "nomination_timing": ("List published each fall; no nomination window stated. The "
+                              "2026 list had not appeared as of Oct 15, 2026."),
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+    "N2_WATCH": {
+        "nominated_by": "Not stated. N2Growth does not explain how the Watchlist is chosen.",
+        "judged_by": "Not stated.",
+        "nomination_requirements": "Not stated.",
+        "nomination_timing": "Published alongside Leaders40.",
+        "entry_fee": "None stated",
+        "last_verified": "2026-10-15",
+    },
+}
+
+_NOMINATION_KEYS = ("nomination_requirements", "nomination_timing", "entry_fee",
+                    "last_verified")
+for _p in PROGRAMS:
+    for _k in _NOMINATION_KEYS:
+        _p.setdefault(_k, None)
+    _p.update(_NOMINATION.get(_p["program_key"], {}))

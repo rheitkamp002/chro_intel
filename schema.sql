@@ -171,6 +171,10 @@ create table if not exists recognition_program (
 );
 
 alter table recognition_program add column if not exists award_frequency text;
+-- 2026-10-15: how nomination works (verified from each award body's pages).
+alter table recognition_program add column if not exists nomination_requirements text;
+alter table recognition_program add column if not exists nomination_timing text;
+alter table recognition_program add column if not exists entry_fee text;
 
 create table if not exists program_category (
   program_id         uuid not null references recognition_program(program_id) on delete cascade,
