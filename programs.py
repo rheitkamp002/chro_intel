@@ -417,6 +417,11 @@ _NOMINATION: dict[str, dict] = {
         "last_verified": "2026-10-15",
     },
     "HRE_LOD": {
+        # Owner decision 2026-10-15: a mid-size WINNER, not a finalist, so it counts as core
+        # at weight 3 -- consistent with HRO Today's small/mid-market winners (3-3.5).
+        "scoring_role": "core",
+        "analyst_weight": 3,
+        "recognition_tier": 2,
         "recognition_type": "Industry award (mid-size organizations)",
         "badge_label": "HR Leader of Distinction",
         "criteria_summary": (

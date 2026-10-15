@@ -96,6 +96,10 @@ These changed the spec; keep them unless the owner says otherwise.
 - **HRO Today weights vary by category** (`program_category`): Large 4, Mid 3.5, Sustainable
   Workforce 3.5, Small 3, Non-Profit 3, Lifetime 4. PROPOSED values, analyst judgement.
 - **Lead with strength and breadth**; composite is a secondary sort/column.
+- **HR Leader of Distinction is CORE, weight 3, tier 2** (owner decision 2026-10-15). It is
+  HR Executive's award for mid-size organizations (500-10,000 employees), not a finalist
+  list; HR Executive of the Year is for organizations above 10,000. Verified from HR
+  Executive's own nomination pages (`../research/nomination_rules.json`).
 - **Peer set = Fortune 100 CHROs, as a census** (recognized or not), so A&D vs cross-industry
   comparisons are not biased by only counting winners. Percentiles stay hidden until that
   peer set is complete.
