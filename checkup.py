@@ -10,7 +10,7 @@ import sys
 import config
 from db import connect, fetch_all
 
-TABLES = ("company", "executive", "executive_role", "recognition_program", "program_category",
+TABLES = ("company", "peer_set", "company_peer_set", "executive", "executive_role", "recognition_program", "program_category",
           "program_criterion", "recognition_cycle", "recognition_event", "accomplishment",
           "accomplishment_criterion", "accomplishment_theme", "ingest_run")
 

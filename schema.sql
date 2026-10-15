@@ -30,10 +30,30 @@ create table if not exists company (
   size_as_of            date,                 -- fiscal year / date the size figures describe
   size_source_url       text,
   is_aerospace_defense  boolean not null default false,
-  in_peer_set           boolean not null default false,  -- member of the census peer set (Fortune 100)
-  notes                 text,
+  notes                text,
   refreshed_at          timestamptz not null default now()
 );
+
+-- Peer sets: census groups to benchmark against (Fortune 100, later Fortune 500, A&D ...).
+-- A set is only used for rates/percentiles once `is_complete` is true.
+create table if not exists peer_set (
+  peer_set_key   text primary key,             -- e.g. 'F100_2026'
+  label          text not null,
+  description    text,
+  source_url     text,
+  as_of          date,
+  is_complete    boolean not null default false
+);
+
+create table if not exists company_peer_set (
+  company_id     uuid not null references company(company_id) on delete cascade,
+  peer_set_key   text not null references peer_set(peer_set_key) on delete cascade,
+  rank_in_set    int,
+  primary key (company_id, peer_set_key)
+);
+
+-- 2026-10-15: superseded by company_peer_set before it held any data.
+alter table company drop column if exists in_peer_set;
 
 -- ---------------------------------------------------------------------------------------
 -- Executives. Deduplicated on name AND context, never on name alone (spec section 23).
